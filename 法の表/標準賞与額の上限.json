@@ -1,0 +1,64 @@
+{
+  "表の名": "標準賞与額の上限",
+  "基準": "支払日",
+  "単位": "円",
+  "引く鍵": ["制度"],
+  "欠けた時": "止める",
+  "注": "標準賞与額は賞与額の 1,000 円未満を切り捨てた額",
+  "行": [
+    {
+      "鍵": {"制度": "健保"},
+      "効く始め": "2025-04-01",
+      "効く終わり": "2026-03-31",
+      "状態": "出た",
+      "値": {"上限": 5730000, "数える期間": "毎年 4 月 1 日から翌年 3 月 31 日までの累計"},
+      "注": "健康保険法 第45条 第1項（年度の累計 573 万円）。2025-04-01 と 2026-03-31 の版で同じ文を照らした。2025-04-01 より前は照らしていない（入れない）",
+      "出典": {
+        "URL": "https://laws.e-gov.go.jp/api/2/law_data/211AC0000000070?asof=2026-03-31&response_format=json&law_full_text_format=json",
+        "sha256": "9fa3c76cdce41f506117aaf776be4a0afd893d1862c03ec39f33ead65609b474",
+        "取った日": "2026-11-11",
+        "照らした元": "https://laws.e-gov.go.jp/api/2/law_data/211AC0000000070?asof=2025-04-01&response_format=json&law_full_text_format=json（sha256 9508d826adb72c79efecdf479c1271c33cda6b09c3886b43bc4e13367bcaec09）"
+      }
+    },
+    {
+      "鍵": {"制度": "厚年"},
+      "効く始め": "2025-04-01",
+      "効く終わり": "2026-03-31",
+      "状態": "出た",
+      "値": {"上限": 1500000, "数える期間": "1 か月"},
+      "注": "厚生年金保険法 第24条の4 第1項（150 万円）。2025-04-01 と 2026-03-31 の版で同じ文を照らした。2025-04-01 より前は照らしていない（入れない）",
+      "出典": {
+        "URL": "https://laws.e-gov.go.jp/api/2/law_data/329AC0000000115?asof=2026-03-31&response_format=json&law_full_text_format=json",
+        "sha256": "2dca771d1b12371b94348a4f20f0ca015de66e02f73e238db4ece25f78c27e7b",
+        "取った日": "2026-11-11",
+        "照らした元": "https://laws.e-gov.go.jp/api/2/law_data/329AC0000000115?asof=2025-04-01&response_format=json&law_full_text_format=json（sha256 1b19b44022e308823a0d90e6c1342286ad51b8b4ad336073692c8af973f64912）"
+      }
+    },
+    {
+      "鍵": {"制度": "健保"},
+      "効く始め": "2026-04-01",
+      "効く終わり": null,
+      "状態": "出た",
+      "値": {"上限": 5730000, "数える期間": "毎年 4 月 1 日から翌年 3 月 31 日までの累計"},
+      "注": "健保・介護・子ども子育て支援金に効く。始めは確かめた額表の年度の始め",
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/premium_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_13tokyo.pdf の本文"
+      }
+    },
+    {
+      "鍵": {"制度": "厚年"},
+      "効く始め": "2026-04-01",
+      "効く終わり": null,
+      "状態": "出た",
+      "値": {"上限": 1500000, "数える期間": "1 か月"},
+      "注": "厚年と子ども子育て拠出金に効く。始めは確かめた額表の年度の始め",
+      "出典": {
+        "URL": "https://www.nenkin.go.jp/service/kounen/hokenryo/ryogaku/ryogakuhyo/20200825.files/R08ryougaku.xlsx",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_13tokyo.pdf の本文"
+      }
+    }
+  ]
+}

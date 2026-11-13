@@ -1,0 +1,7 @@
+# 側の名の束（自分たちのアカウントと事務所の呼び名だけ。.py・.json に出たら赤。設計書の地の文は見ない）。1 行 1 語・# から後は注。字の大小は分ける。
+# 顧客の名はここに置かない（顧客の語の検査 PAYROLL_NG_WORDS／PAYROLL_NG_WORDS_FILE の道。CONTRIBUTING.md §3）。
+# 見る所と外しの決まりは tests/test_骨.py の「4. 入れてよい物の線」と docs/設計/入れてよい物.md。
+UTC
+Javis
+ynishikawa
+sharekeiri

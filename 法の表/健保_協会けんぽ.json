@@ -1,0 +1,630 @@
+{
+  "表の名": "健保_協会けんぽ",
+  "基準": "月分",
+  "単位": "%",
+  "引く鍵": ["都道府県"],
+  "欠けた時": "仮で計算し問う",
+  "注": "健康保険組合の率は組合ごと＝顧客の物。ここは協会けんぽだけ。任意継続・日雇特例は 4 月分から（この表は一般の被保険者）",
+  "行": [
+    {
+      "鍵": {"都道府県": "北海道"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.28},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_01hokkaido.pdf",
+        "照らした元のsha256": "1e9fc77f1836f8f0ae168f68327a252d675834c9c4663382205cb20585fc44f9"
+      }
+    },
+    {
+      "鍵": {"都道府県": "青森県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.85},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_02aomori.pdf",
+        "照らした元のsha256": "bc0af292fc584b3985837a1fcc6f544f58d18fedc3d25ace1d92347ee7ad40ce"
+      }
+    },
+    {
+      "鍵": {"都道府県": "岩手県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.51},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_03iwate.pdf",
+        "照らした元のsha256": "1bacb4dc8295f66549af0c5e65f2c6f6838c7d5c245f2eaa6207fad6bba05b7a"
+      }
+    },
+    {
+      "鍵": {"都道府県": "宮城県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.1},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_04miyagi.pdf",
+        "照らした元のsha256": "1b7ee9615c8c8dc8e883e6a75b65c60492f7a7e4ae49ff8e4b222ce97b66bd5d"
+      }
+    },
+    {
+      "鍵": {"都道府県": "秋田県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.01},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_05akita.pdf",
+        "照らした元のsha256": "c7e66a8ff713df729864163c38879608fb75ddfb71ea3108631cb00935bf761a"
+      }
+    },
+    {
+      "鍵": {"都道府県": "山形県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.75},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_06yamagata.pdf",
+        "照らした元のsha256": "d4415af5ef94c93ebaf63940164354b1de3b39cb4306b7567bb46f596defb561"
+      }
+    },
+    {
+      "鍵": {"都道府県": "福島県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.5},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_07fukushima.pdf",
+        "照らした元のsha256": "83d6254c0c6e8c2d27d67b4b8fa92f63c3149fe8d298899426887749e7081bfd"
+      }
+    },
+    {
+      "鍵": {"都道府県": "茨城県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.52},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_08ibaraki.pdf",
+        "照らした元のsha256": "abe08e903d681def5fd5171681c71d2c1782fa42afd88866375f3ad28529c187"
+      }
+    },
+    {
+      "鍵": {"都道府県": "栃木県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.82},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_09tochigi.pdf",
+        "照らした元のsha256": "1a851b4dab131256865ee0045152b05fd32a6d7283e8ba700f52b2630a234e42"
+      }
+    },
+    {
+      "鍵": {"都道府県": "群馬県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.68},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_10gunma.pdf",
+        "照らした元のsha256": "7834dad0521933093afaf529fce40cbc95084c73baf32c55b8df1e8a166f1492"
+      }
+    },
+    {
+      "鍵": {"都道府県": "埼玉県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.67},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_11saitama.pdf",
+        "照らした元のsha256": "25ec25e00321d089f42767087e521df1600426d18753bfa9de7892ff173089d3"
+      }
+    },
+    {
+      "鍵": {"都道府県": "千葉県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.73},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_12chiba.pdf",
+        "照らした元のsha256": "878b1adac2f631baae335ab89cf45aedba1bd8bb4774ecbfe99b1ae114abb779"
+      }
+    },
+    {
+      "鍵": {"都道府県": "東京都"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.85},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_13tokyo.pdf",
+        "照らした元のsha256": "1c5abc10951aeb941267ce128cf802253498a52042ff35629a65f3cc7012328a"
+      }
+    },
+    {
+      "鍵": {"都道府県": "神奈川県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.92},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_14kanagawa.pdf",
+        "照らした元のsha256": "68b2492461de9782c4ae5f84b888b8cdf7876d0095814309f94a1b24aa6a2790"
+      }
+    },
+    {
+      "鍵": {"都道府県": "新潟県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.21},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_15niigata.pdf",
+        "照らした元のsha256": "e0e7d585a08dd930f182f1f07f00340d780c5664139fa94e491209945057d33e"
+      }
+    },
+    {
+      "鍵": {"都道府県": "富山県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.59},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_16toyama.pdf",
+        "照らした元のsha256": "1082f31cb8a2df1979515471d3bcc10a052cf23f13951200058e200b963928b6"
+      }
+    },
+    {
+      "鍵": {"都道府県": "石川県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.7},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_17ishikawa.pdf",
+        "照らした元のsha256": "6d419416b6b7fcfe3fe4ef8a0a8346f1ce175b0437b13b2be981649bfac9c478"
+      }
+    },
+    {
+      "鍵": {"都道府県": "福井県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.71},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_18fukui.pdf",
+        "照らした元のsha256": "e47a3ea09a89c137ba8c260ca67eac461139bb2971138e198ca0de0b64a657f5"
+      }
+    },
+    {
+      "鍵": {"都道府県": "山梨県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.55},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_19yamanashi.pdf",
+        "照らした元のsha256": "fd447be0e63d46667b372dca2de660e26392b88c5052df6f7121fc95f2fdfc66"
+      }
+    },
+    {
+      "鍵": {"都道府県": "長野県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.63},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_20nagano.pdf",
+        "照らした元のsha256": "6301f98fdda448199950186db08142306253f3aa71fb04b3060d33d8f051a48f"
+      }
+    },
+    {
+      "鍵": {"都道府県": "岐阜県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.8},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_21gifu.pdf",
+        "照らした元のsha256": "ac80e1d366d5d9ef372e62365247e0c88f2819f6d80cec552d999e4eaabd667d"
+      }
+    },
+    {
+      "鍵": {"都道府県": "静岡県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.61},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_22shizuoka.pdf",
+        "照らした元のsha256": "3b32aa808a9302fc63d2cd99270614081ed1bc4b141575d4840feb4b0f81a7af"
+      }
+    },
+    {
+      "鍵": {"都道府県": "愛知県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.93},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_23aichi.pdf",
+        "照らした元のsha256": "53cf8c71f1faf0ab9f2e646d11739121a67ee85eac22ee33fe737bb54b26d8dc"
+      }
+    },
+    {
+      "鍵": {"都道府県": "三重県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.77},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_24mie.pdf",
+        "照らした元のsha256": "99ac80b9ea96b7f0dc91443aa09b11e161bcd01945259eadd70c54801f477866"
+      }
+    },
+    {
+      "鍵": {"都道府県": "滋賀県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.88},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_25shiga.pdf",
+        "照らした元のsha256": "7de58753c0fc6104dfdaf82618ccda79033c58a365461d50af54e1724cd22db8"
+      }
+    },
+    {
+      "鍵": {"都道府県": "京都府"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.89},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_26kyoto.pdf",
+        "照らした元のsha256": "41513e6de389b2f7f29329c33e45f8ad92ef8a510ff44302c98e7c8df4fac2f0"
+      }
+    },
+    {
+      "鍵": {"都道府県": "大阪府"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.13},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_27osaka.pdf",
+        "照らした元のsha256": "1425f60669e4afc7f2cc4366a7ad12860dc7429f8f694de7a245e0c584366e95"
+      }
+    },
+    {
+      "鍵": {"都道府県": "兵庫県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.12},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_28hyogo.pdf",
+        "照らした元のsha256": "31e3d4b9a11df9da249e5fe6522b3f192e38385f005c6fb083740d79e233e562"
+      }
+    },
+    {
+      "鍵": {"都道府県": "奈良県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.91},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_29nara.pdf",
+        "照らした元のsha256": "bcab7c705400dc8f374f17cebfa8b06842433e99a9777298325c1885a8976e86"
+      }
+    },
+    {
+      "鍵": {"都道府県": "和歌山県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.06},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_30wakayama.pdf",
+        "照らした元のsha256": "6a83ef84ee6032212b218cd04f341af896c3f95df741344a08dfad6c0786d593"
+      }
+    },
+    {
+      "鍵": {"都道府県": "鳥取県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.86},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_31tottori.pdf",
+        "照らした元のsha256": "c8e0a23192dc0e224339e802399ce1aa1ffeb91889959a087045c0acc0cec630"
+      }
+    },
+    {
+      "鍵": {"都道府県": "島根県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.94},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_32shimane.pdf",
+        "照らした元のsha256": "842511b0619ea2c1804ab287c233f53b02741cf0f345d30bb752ec612a13b6de"
+      }
+    },
+    {
+      "鍵": {"都道府県": "岡山県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.05},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_33okayama.pdf",
+        "照らした元のsha256": "34bea0d2693d6db57ffe5d66d8d2c317fc9a33feef7d8de58fe4ac880a8066dd"
+      }
+    },
+    {
+      "鍵": {"都道府県": "広島県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.78},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_34hiroshima.pdf",
+        "照らした元のsha256": "441f25947e61f79cb7dc7cb63ebfe58bd12d119698607454204726b210611a3d"
+      }
+    },
+    {
+      "鍵": {"都道府県": "山口県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.15},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_35yamaguchi.pdf",
+        "照らした元のsha256": "491bfdd8d16117a67df73ee6d1dea5cf9b2af2cde0e9295f8d01622b3389f4ec"
+      }
+    },
+    {
+      "鍵": {"都道府県": "徳島県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.24},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_36tokushima.pdf",
+        "照らした元のsha256": "321d6d50abd4f7cc0f455af785913689c04497af876b73def2a85c366b3e7d70"
+      }
+    },
+    {
+      "鍵": {"都道府県": "香川県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.02},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_37kagawa.pdf",
+        "照らした元のsha256": "2c01c106fd9fc478129ca58e1d55fbc044c1863fd426381c703b278400d27596"
+      }
+    },
+    {
+      "鍵": {"都道府県": "愛媛県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.98},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_38ehime.pdf",
+        "照らした元のsha256": "a9e1ca2ebcddc80c689d022b78ec33ccb450cb1b0c5996cbe415766b2c80b712"
+      }
+    },
+    {
+      "鍵": {"都道府県": "高知県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.05},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_39kouchi.pdf",
+        "照らした元のsha256": "a82f0c2cfc4b1b055ab7aab02d8946804a9000924505aa9a87ca5a4d4d5efa5b"
+      }
+    },
+    {
+      "鍵": {"都道府県": "福岡県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.11},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_40fukuoka.pdf",
+        "照らした元のsha256": "35185323c6f9f5c6b1b35d4dbdbea0c1e28aa2efad238315e61e1e32b5ba1254"
+      }
+    },
+    {
+      "鍵": {"都道府県": "佐賀県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.55},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_41saga.pdf",
+        "照らした元のsha256": "b37bcfaa24d767654aa1d42388c4c731c8924024609ad78f4d3197ec309c8875"
+      }
+    },
+    {
+      "鍵": {"都道府県": "長崎県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.06},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_42nagasaki.pdf",
+        "照らした元のsha256": "2099a89498c26e4e998f56ef7cfa2da1504845cf3401112797a7dd8082effa62"
+      }
+    },
+    {
+      "鍵": {"都道府県": "熊本県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.08},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_43kumamotoi.pdf",
+        "照らした元のsha256": "dd4be37dda7a870d49f1445a72a4e62e40ca565de05f2603a2c88ae5cbc28702"
+      }
+    },
+    {
+      "鍵": {"都道府県": "大分県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.08},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_44oita.pdf",
+        "照らした元のsha256": "7a69d328a0b050921cdd456106f074ad7670d1270f1be3eceb7c4e60c55e1bc6"
+      }
+    },
+    {
+      "鍵": {"都道府県": "宮崎県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.77},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_45miyazaki.pdf",
+        "照らした元のsha256": "799e9acc897ed7ecd40ce609a5c33508aee763bac4354a37b5b157453336da3b"
+      }
+    },
+    {
+      "鍵": {"都道府県": "鹿児島県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 10.13},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_46kagoshima.pdf",
+        "照らした元のsha256": "31b8e870f549c8588fcf153416f5d0d04fd5ba03824ed2a6a81eb76d080ed37e"
+      }
+    },
+    {
+      "鍵": {"都道府県": "沖縄県"},
+      "効く始め": "2026-03",
+      "効く終わり": "2027-02",
+      "状態": "出た",
+      "値": {"率%": 9.44},
+      "出典": {
+        "URL": "https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/index.html",
+        "取った日": "2026-11-11",
+        "照らした元": "https://www.kyoukaikenpo.or.jp/assets/R8_47okinawa.pdf",
+        "照らした元のsha256": "22cee400570773b120a9e43990ad9f13d8b8b6f4be0ba9a4fb7b23625132789a"
+      }
+    },
+    {
+      "鍵": {},
+      "効く始め": "2027-03",
+      "効く終わり": null,
+      "状態": "まだ",
+      "値": null,
+      "例年の時期": "2 月上旬に決まり 3 月分から",
+      "出典": null
+    }
+  ]
+}
