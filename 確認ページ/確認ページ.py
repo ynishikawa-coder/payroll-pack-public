@@ -1,11 +1,14 @@
 """確認ページ — 質問と回答の行から、配る用の 1 枚の自己完結 HTML と、その名・置き場・貼り戻し・管理表の 1 行を返す。
 
 正本は質問と回答。確認ページは道具が起こす表示と配る用の写し（`docs/設計/Drive の型.md` §3）。
+HTML は qa-html の 1 つの型（土台 docs-kit の skill qa-html の references/template.html を丸ごと写した `雛形.html`）で起こし、
+答えは型の答えの形 qa-html/2（問いの鍵・版・受付番号）で受けて、鍵で質問と回答の行へ戻す。
 この道具は Drive を開かない。問いの一覧を受けて文字列を返すだけで、置くのは殻（環境の口）。
 返す HTML は外へ通信しない（外の script・style・画像・fetch を持たない）。
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -17,31 +20,95 @@ from pathlib import Path
 根 = ここ.parent
 if str(根) not in sys.path:
     sys.path.insert(0, str(根))
-_spec = importlib.util.spec_from_file_location("確認ページ_段の解決", 根 / "初期設定" / "段の解決.py")
-段 = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(段)
+
+
+def _読み込む(名: str, path: Path):
+    s = importlib.util.spec_from_file_location(名, path)
+    m = importlib.util.module_from_spec(s)
+    s.loader.exec_module(m)
+    return m
+
+
+段 = _読み込む("確認ページ_段の解決", 根 / "初期設定" / "段の解決.py")
+型 = _読み込む("確認ページ_型の口", 根 / "初期設定" / "型の口.py")
 
 from 芯.計算 import 暦  # noqa: E402  (締めた期間の式を 1 か所に)
 
-雛形 = ここ / "雛形.html"
+雛形 = ここ / "雛形.html"   # qa-html の型の写し（qa:css・qa:js・qa:foot は 1 字も変えない。直す時は型から写し直す）
 既定の支給の月 = "翌月"  # 初期設定/項目.json の 支払.支給の月 の既定・芯/計算/要る値 と同じ
 
 用たち = ("立ち上げ", "毎月")
+宛先たち = ("send", "copy", "artifact")   # 送る＝配る口へ／写す＝貼り戻しの字／確認のページ（Artifact）
 形たち = ("choose", "mismatch", "fact", "judge")
+まとまりたち = ("rule", "person", "once")   # 会社の決まり → 人ごとの事実 → 今回だけの事（この順に並べる）
+# 問いの 2 種類（オーナーの決定 2026-11-16・正本は docs/設計/設問の作り方.md §2）。1 枚の中で前半＝会社の決まり・後半＝原本。
+# 会社の決まり＝まとまり rule・原本＝person と once（並びは qa-html の rule → person → once のまま 2 部に分かれる）
+種類たち = ("会社の決まり", "原本")
+_種類のまとまり = {"会社の決まり": ("rule",), "原本": ("person", "once")}
+# 会社の決まりの反映先（初期設定/設問.py の _決まりの先 と同じ）
+_決まりの先 = re.compile(r"^(?:03_マスタ/(?:会社|勤務の型|支給控除の項目)(?:/|$)|給与のルール\.md)")
 見当のとおり = "見当のとおり"
 推奨の印 = "（推奨）"
+# qa-html/2 の答えの形と、フォームの項目の名（型の約束）
+答えの形 = "qa-html/2"
 自由記入 = "__自由記入__"
-# 形ごとに道具が後ろへ足す選択肢（qa-html の 1 つの形）
-足す選択肢 = {
-    "choose": ["どちらでもない（補足に）"],
-    "mismatch": ["どちらでもない（補足に）"],
-    "judge": ["別の決め方（補足に）"],
-    "fact": ["まだ分からない", "該当しない"],
+版の名 = "__版__"
+受付番号の名 = "__受付番号__"
+分からない = "__unknown__"
+分からないの字 = "分からない・社内で確かめてから答える"   # 型の字のまま（検査が見る）
+分からないの語 = "分からない"   # 質問と回答の 回答 に書く語
+当てはまらない = "当てはまらない"
+# 形ごとに道具が後ろへ足す選択肢（ひとことに書かせる選択肢がもうあれば足さない）。fact は「当てはまらない」
+足す選択肢 = {"choose": "ほかの答え", "mismatch": "ほかの答え", "judge": "別の決め方"}
+# 問いの箱（何が無いか の頭の字・正本は docs/設計/設問の作り方.md）と、形が無い行の既定の形
+その月だけの物 = "その月だけの物"
+箱の既定の形 = {"読み方": "choose", "法の線": "choose", その月だけの物: "fact"}
+その月だけの物の当てはまらない = "この月は払う物・引く物・人の変わりが 1 つも無い"
+# この答えで変わる事（small.chg）の既定（設問が出す決まった語）。行の `変わる事` か選択肢の {見出し, 変わる事} が勝つ
+変わる事の既定 = {
+    "原本を送る": "資料を受け取るまで、この値は確定しません",
+    "決まりは無い": "決まりの無い物として計算します",
+    "法の線に直して払う": "法の最低線に合わせて計算し直します",
+    "今の払い方のまま払う": "会社の決まりのまま計算し、法律との差は毎月お知らせします",
+    "読んだとおり": "上の読んだ物のとおり計算します",
 }
-既定の決まる事 = "給与の計算のしかた"
+# なぜ聞くか（data-why）の決まった 4 文（qa-html の check.mjs の RULES.why と同じ字）と、行の 理由 の日本語
+理由の文 = {
+    "mismatch": "資料どうしで食い違っています",
+    "missing": "資料に書いてありません",
+    "law": "今の決まりが法律の決まりと合っていません",
+    "once": "今回だけの事を確かめます",
+}
+# 給与の語への言い換えは repo の根の config/skill-values.json の docs-kit.qa-html.why（check.mjs も同じ所を読む＝文は 1 か所）
+理由の文.update(json.loads((根 / "config" / "skill-values.json").read_text(encoding="utf-8"))
+              .get("docs-kit", {}).get("qa-html", {}).get("why", {}))
+理由の語 = {"食い違い": "mismatch", "書いてない": "missing", "法の線": "law", "今回だけ": "once"}
+対象の上限 = 3
+枚の問いの上限 = 12   # qa-html の check.mjs の questions_per_page と同じ（超えたら 作る が同じ版の枚に分ける）
+見つけた事の字の上限 = 60   # qa-html の check.mjs の known_line_chars と同じ
+くわしくの行の上限 = 3
+切り抜きの上限 = 2
 分かっている事の行の上限 = 2
+# 選択肢の頭の記号（A・B・①・1. など）と、記号で選択肢を指す字（qa-html の check.mjs の option_symbol・symbol_ref と同じ）
+記号の頭 = re.compile(r"^\s*(?:案\s*[A-Za-zＡ-Ｚ0-9０-９]|[A-Za-zＡ-Ｚａ-ｚ](?:\s*[.．:：、)）]|\s+)|[0-9０-９]{1,2}\s*[.．:：、)）](?![0-9０-９])|[①-⑳])"
+                  r"|^\s*[(（](?:[A-Za-zＡ-Ｚ]|[0-9]{1,2})[)）]")
+記号で指す = re.compile(r"(?<![A-Za-z0-9])(?:案\s*)?[A-DＡ-Ｄ]\s*(?:なら|の場合|案|を選)")
 # 既定で見る内部の言葉（呼ぶ側が 内部の言葉 の引数で足す）。顧客の語はここに書かない。
 既定の内部の言葉 = ("立ち上げ", "照合", "逆算", "道具", "部品", "質問と回答", "03_マスタ", "04_台帳", "01_ルール", ".md")
+# header と受付の既定の字（殻が事務所の設定から渡せば勝つ）
+既定の色 = "#0f6e66"
+既定の答えるまでの扱い = "答えが届くまで、この点は確定せずにお待ちします。"
+既定のまとまりの1行 = {"rule": "前半・会社の決まり: 資料で決めきれない所と法律と違う所です",
+                   "person": "後半・原本の確かめ: 人ごとの事で資料に書いていなかった所です",
+                   "once": "今回だけの事を確かめます"}
+既定の後半の頭 = "後半・原本の確かめ: "   # 後半（原本）の最初のまとまりの 1 行の頭（person が無く once から始まる時）
+既定のまとまりの見出し = {"person": "原本・人ごとの事", "once": "原本・今回だけの事"}   # data-glabel（毎月の once は「原本・M 月分だけの事」）
+既定の宛名 = "ご担当者様"
+# 型から外した欄（2026-11-14 オーナー決定・qa-html の型が宛先で変えるのは宛名と会社の色だけ）
+外した欄 = ("差出人", "連絡先")
+既定の期限の字 = "分かる所からお答えください。"
+既定のこの後_毎月 = "いただいた答えで給与を計算し、結果をお送りします。"
+既定のこの後_立ち上げ = "いただいた答えで給与計算の設定を決め、最初の月の結果をお送りします。"
 
 
 # ── 名と置き場 ─────────────────────────────────────────────
@@ -102,28 +169,37 @@ def 置き場(組: str, 支給月: str, 支給の月=None) -> str:
     return f"10_会社/{組}/20_配る物/{月}/"
 
 
-def 名(組: str, 支給月: str, 版: int, 下書き: bool = False, 支給の月=None) -> str:
+def 名(組: str, 支給月: str, 版: int, 下書き: bool = False, 支給の月=None, 枚: int | None = None) -> str:
+    """確認ページの名 `確認ページ_<組>_<支給月の名>_v<版>.html`。1 回に配る問いが 1 枚の上限を超えて分けた時は
+    `_v<版>-<枚>.html`（同じ版の 1 枚目・2 枚目＝版は配り直しの数・枚は分けた何枚目）。"""
     if not isinstance(版, int) or 版 < 1:
         raise ValueError(f"版 {版!r} は 1 から")
+    if 枚 is not None and (not isinstance(枚, int) or 枚 < 1):
+        raise ValueError(f"枚 {枚!r} は 1 から")
     if not 組 or "/" in 組:
         raise ValueError(f"組 {組!r} が名に使えない")
-    本 = f"確認ページ_{組}_{支給月の名(支給月, 支給の月)}_v{版}.html"
+    本 = f"確認ページ_{組}_{支給月の名(支給月, 支給の月)}_v{版}" + (f"-{枚}" if 枚 else "") + ".html"
     return "下書き_" + 本 if 下書き else 本
 
 
 def 次の版(組: str, 支給月: str, 今ある名: list[str], 支給の月=None) -> dict:
-    """置き場に今ある名の一覧から、次に配る版と、差し替える前の版を返す。
+    """置き場に今ある名の一覧から、次に配る版と、差し替える前の版を返す。分けた枚（`_v<版>-<枚>.html`）も同じ版に数える。
 
-    返す物: 版・名・下書きの名・置き場・前の版（無ければ None）。前の版は 差し替え の手順で 90_履歴/ へ移す。"""
+    返す物: 版・名・下書きの名・置き場・前の版（無ければ None・前の版を分けていれば 1 枚目）・前の版たち（前の版の全部の枚の名）。
+    前の版たちは 差し替え の手順で 1 つずつ 90_履歴/ へ移す。"""
     頭 = re.escape(f"確認ページ_{組}_{支給月の名(支給月, 支給の月)}_v")
-    版たち = sorted(int(m.group(1)) for n in 今ある名 if (m := re.fullmatch(頭 + r"(\d+)\.html", n)))
-    版 = (版たち[-1] + 1) if 版たち else 1
+    読んだ = sorted((int(m.group(1)), int(m.group(2) or 0), n) for n in 今ある名
+                 if (m := re.fullmatch(頭 + r"(\d+)(?:-(\d+))?\.html", n)))
+    前 = 読んだ[-1][0] if 読んだ else None
+    前たち = [n for v, _, n in 読んだ if v == 前]
+    版 = (前 + 1) if 前 else 1
     return {
         "版": 版,
         "名": 名(組, 支給月, 版, 支給の月=支給の月),
         "下書きの名": 名(組, 支給月, 版, 下書き=True, 支給の月=支給の月),
         "置き場": 置き場(組, 支給月, 支給の月),
-        "前の版": 名(組, 支給月, 版たち[-1], 支給の月=支給の月) if 版たち else None,
+        "前の版": 前たち[0] if 前たち else None,
+        "前の版たち": 前たち,
     }
 
 
@@ -135,32 +211,210 @@ def 差し替え(組: str, 支給月: str, 前の名: str, 消す日: str, 支�
     return {"する": "移す", "元": 置き場(組, 支給月, 支給の月) + 前の名, "先": f"{根}90_履歴/消す_{消す日}_{前の名}"}
 
 
-# ── 問いの検査 ─────────────────────────────────────────────
+# ── 問いの行を読む ─────────────────────────────────────────
 
-def _選択肢(行: dict) -> list[str]:
+def _鍵(番号: str) -> str:
+    """問いの番号 → 問いの鍵（data-qkey・答えの name。半角英数字と _）。"""
+    return re.sub(r"[^A-Za-z0-9_]", "_", 番号)
+
+
+def _選択肢の字(行: dict) -> list[str]:
     if isinstance(行.get("選択肢"), list):
-        return [str(x).strip() for x in 行["選択肢"] if str(x).strip()]
+        return [str(x.get("見出し", "") if isinstance(x, dict) else x).strip() for x in 行["選択肢"]
+                if str(x.get("見出し", "") if isinstance(x, dict) else x).strip()]
     return [x.strip() for x in re.split(r"[／|｜]", str(行.get("答え方の例", ""))) if x.strip()]
 
 
-def _分かっている事(行: dict) -> list[str]:
-    v = 行.get("分かっている事")
-    if isinstance(v, list):
+def _字の並び(v, 区切り=r"[／\n]") -> list[str]:
+    """list か、区切りの字で並べた文字列 → 空でない字の list。"""
+    if isinstance(v, (list, tuple)):
         return [str(x).strip() for x in v if str(x).strip()]
-    if isinstance(v, str) and v.strip():
-        return [x.strip() for x in v.splitlines() if x.strip()]
-    return [f"今の見込みは「{行['見当']}」です。"] if str(行.get("見当", "")).strip() else []
+    return [x.strip() for x in re.split(区切り, str(v or "")) if x.strip()]
 
 
-def _鍵(番号: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_]", "_", 番号)
+def _分かっている事(行: dict) -> list[str]:
+    """見つけた事（`.known`）の行。`分かっている事`（資料名・場所・値）か、無ければ探した資料と見当から起こす。"""
+    v = 行.get("分かっている事")
+    行たち = _字の並び(v, r"\n") if v else []
+    if 行たち:
+        return 行たち
+    探した = _字の並び(行.get("探した資料"), r"[、,\n]")
+    if 探した:
+        行たち.append(f"{'、'.join(探した)} に書いてありません。")
+    if str(行.get("見当", "")).strip():
+        行たち.append(f"今の見込みは「{行['見当']}」です。")
+    return 行たち
 
+
+def _資料の名たち(行: dict) -> list[str]:
+    """見つけた事が指す読んだ資料の名（`資料` と `探した資料`）。"""
+    return list(dict.fromkeys([*_字の並び(行.get("資料"), r"[、,\n]"), *_字の並び(行.get("探した資料"), r"[、,\n]")]))
+
+
+def _対象(行: dict) -> tuple[list[str], list[str]]:
+    """何について（`対象`＝誰／いつ／何・`人:` を頭に付けた物は問いの人）→ (札たち, 問いの人の名たち)。"""
+    札, 人 = [], []
+    for x in _字の並び(行.get("対象")):
+        if x.startswith("人:"):
+            x = x[2:].strip()
+            人.append(x)
+        札.append(x)
+    return 札, 人
+
+
+def _理由(行: dict) -> str:
+    """なぜ聞くか（data-why）。行の `理由`（mismatch・missing・law・once か 食い違い・書いてない・法の線・今回だけ）が勝つ。
+    無ければ 形 mismatch＝mismatch・箱 法の線＝law・その月だけの物＝once・ほか missing。"""
+    v = str(行.get("理由") or "").strip()
+    if v:
+        return 理由の語.get(v, v)
+    if _形(行) == "mismatch":
+        return "mismatch"
+    return {"法の線": "law", その月だけの物: "once"}.get(_問いの箱(行), "missing")
+
+
+def _くわしく(行: dict) -> list[str]:
+    return _字の並び(行.get("くわしく"), r"\n")
+
+
+def _問いの箱(行: dict) -> str:
+    何 = str(行.get("何が無いか", "")).strip()
+    if 何 == その月だけの物 or 何.startswith(その月だけの物 + ":"):
+        return その月だけの物
+    return next((b for b in ("読み方", "法の線") if 何.startswith(b + ":")), "足りない値")
+
+
+def _形(行: dict) -> str:
+    """行の形。無ければ箱の既定（読み方・法の線＝choose・その月だけの物＝fact・ほか judge）。"""
+    return 行.get("形") or 箱の既定の形.get(_問いの箱(行), "judge")
+
+
+def _まとまり(行: dict) -> str:
+    """並べ方のまとまり（data-group）: rule＝会社の決まり → person＝人ごとの事実 → once＝今回だけの事。
+
+    行の `まとまり` が勝つ。無ければ箱から: 読み方・法の線＝rule・その月だけの物＝once・足りない値は 何が無いか の項目の段
+    （会社・勤務の型・事務所に置ける＝rule・人だけ＝person）で、項目でない物（原本の名など）は once・何が無いか が空は rule。"""
+    if 行.get("まとまり"):
+        return str(行["まとまり"])
+    箱 = _問いの箱(行)
+    if 箱 == その月だけの物:
+        return "once"
+    if 箱 != "足りない値":
+        return "rule"
+    何 = str(行.get("何が無いか", "")).strip()
+    名 = (re.fullmatch(r"「([^」]+)」が無い.*", 何) or [None, 何])[1]   # 種を集める の「<項目>」が無い の形も
+    try:
+        段たち = set(型.項目(名).get("段") or ()) if 何 else set()
+        項目だ = bool(何)
+    except KeyError:
+        段たち, 項目だ = set(), False
+    先たち = [w.strip() for w in re.split(r"[、,]", str(行.get("反映先") or "")) if w.strip()]
+    if 先たち:   # 反映先が全部 会社の決まりの先（マスタの会社・勤務の型・支給控除の項目・給与のルール.md）なら会社の決まり
+        if all(_決まりの先.match(w) for w in 先たち):
+            return "rule"
+        return "person" if 項目だ else "once"
+    if not 何:
+        return "rule"
+    if not 項目だ:
+        return "once"
+    return "rule" if 段たち & {"会社", "勤務の型", "事務所"} else "person"
+
+
+def _種類(行: dict) -> str:
+    """問いの種類（会社の決まり／原本）。行の `種類` が勝つ。無ければまとまりから（rule＝会社の決まり・person と once＝原本）。
+    初期設定/設問.py の `種類` と同じ決まり（質問と回答の列だけから決まる）。"""
+    v = str(行.get("種類") or "").strip()
+    if v:
+        return v
+    return "会社の決まり" if _まとまり(行) == "rule" else "原本"
+
+
+def _値の鍵(語: str) -> str:
+    """選択肢の字 → 選択肢の鍵（value）。字から決まる（版が変わっても同じ字なら同じ鍵）。"""
+    return "c" + hashlib.sha1(語.encode("utf-8")).hexdigest()[:8]
+
+
+def _変わる事の表(行: dict) -> dict:
+    v = 行.get("変わる事")
+    if isinstance(v, dict):
+        return {str(k).strip(): str(x).strip() for k, x in v.items()}
+    out = {}
+    for x in _字の並び(v):   # 「語＝変わる事／語＝変わる事」
+        if "＝" in x:
+            k, _, w = x.partition("＝")
+            out[k.strip()] = w.strip()
+    return out
+
+
+def _選択肢(行: dict) -> list[dict]:
+    """行の選択肢 → [{鍵, 語, 見出し, 変わる事, 添え書き, 推奨}]。語＝質問と回答の 回答 に書く字。
+    変わる事（small.chg）は行の `変わる事`（{語: 文}・「語＝文／…」）か選択肢の {見出し, 変わる事} か、語ごとの既定。
+    最後に形ごとの「ほかの答え」「別の決め方」か「当てはまらない」を足す（「分からない」は HTML の側で全問の最後に置く）。"""
+    形 = _形(行)
+    箱 = _問いの箱(行)
+    見当 = str(行.get("見当", "")).strip()
+    表 = _変わる事の表(行)
+    out = []
+    元 = 行.get("選択肢") if isinstance(行.get("選択肢"), list) else _選択肢の字(行)
+    if 形 == "fact" and not 元:
+        元 = ["分かる（補足に書く）"]
+    for o in 元:
+        if isinstance(o, dict):
+            語 = str(o.get("見出し", "")).strip()
+            推奨, 見出し, 変わる = bool(o.get("推奨")), 語, str(o.get("変わる事", "")).strip()
+            if m := re.fullmatch(r"(.+?)（(補足に[^）]*)）", 語):
+                見出し = m.group(1)   # 見出しには書かない＝印（data-supp）で欄の名が「この答えでは書いてください」に変わる
+        else:
+            語 = str(o).strip()
+            推奨 = 語.endswith(推奨の印)
+            if 推奨:
+                語 = 語[: -len(推奨の印)].strip()
+            見出し, 変わる = 語, ""
+            if m := re.fullmatch(r"(.+?)（(補足に[^）]*)）", 語):
+                見出し = m.group(1)
+                変わる = ("訳を" if "訳" in m.group(2) else "") + "ひとことに書いた事で計算します"
+        if not 語 or (形 == "fact" and 語 == 当てはまらない):
+            continue   # fact の「当てはまらない」は形の最後に 1 つだけ足す
+        if 語 == 見当のとおり:
+            推奨 = True   # 見当のとおり は推奨（1 つ目でなければ検査が赤）
+            見出し = "今の見込みのとおり"
+            変わる = 変わる or (f"「{見当}」のまま計算します" if 0 < len(見当) <= 24 else "上の今の見込みのまま計算します")
+        変わる = 表.get(語) or 変わる or 変わる事の既定.get(見出し, "")
+        out.append({"鍵": "estimate" if 語 == 見当のとおり else _値の鍵(語), "語": 語, "見出し": 見出し,
+                    "変わる事": 変わる, "添え書き": "", "推奨": 推奨})
+    for o in out:
+        o["要る"] = bool(re.search(r"（補足に[^）]*）$", o["語"])) or _ひとことを頼む(o)
+    ひとこと型 = any("ひとこと" in o["変わる事"] for o in out) or any(o["見出し"] in 足す選択肢.values() for o in out)
+    if 形 == "fact":
+        out.append({"鍵": "none", "語": 当てはまらない, "見出し": 当てはまらない, "変わる事": "",
+                    "添え書き": その月だけの物の当てはまらない if 箱 == その月だけの物 else "", "推奨": False})
+    elif not ひとこと型:
+        語 = 足す選択肢[形]
+        out.append({"鍵": "other", "語": 語, "見出し": 語, "変わる事": "", "添え書き": "下のひとことに書いてください", "推奨": False})
+    for o in out:
+        o["要る"] = o.get("要る") or o["鍵"] == "other" or o["見出し"] in 足す選択肢.values() or _ひとことを頼む(o)
+    return out
+
+
+# ひとことに書かせる選択肢の字（qa-html の check.mjs の RULES.supp_ask と同じ）。当たる選択肢には data-supp="need" を付ける
+_ひとことの字 = re.compile(r"ひとこと|補足に書|補足欄|下の欄")
+
+
+def _ひとことを頼む(o: dict) -> bool:
+    """選択肢がひとことに書く事を頼むか（見出し・添え書き・変わる事の字）。"""
+    return bool(_ひとことの字.search(" ".join((o["見出し"], o["添え書き"], o["変わる事"]))))
+
+
+# ── 問いの検査 ─────────────────────────────────────────────
 
 def 問いの検査(行たち: list[dict], 内部の言葉: list[str] | tuple = ()) -> list[str]:
     """qa-html の決まりのうち機械で見られる物。決まり外れを赤の 1 行ずつで返す（空なら緑）。
 
-    1 問 1 行・分かっている事 2 行まで・形が 4 つのどれか・選択肢 2 つ以上・推奨は 1 つ目だけ・内部の言葉を含まない・
-    問いの番号が在って重ならない。"""
+    1 問 1 行・形が 4 つ・まとまりが 3 つのどれか・選択肢 2 つ以上・推奨は 1 つ目だけ・選択肢に記号を付けない・
+    記号で選択肢を指さない・内部の言葉を含まない・問いの番号が在って重ならない。
+    前提（qa-html の前提の 3 段）: 何について（`対象` 1〜3 つ）・なぜ聞くか（`理由` が 4 つのどれか）・見つけた事（2 行まで）と
+    それが指す読んだ資料（`資料` か `探した資料`）・くわしく（3 行まで）・選択肢ごとの変わる事・切り抜き（2 枚まで・写る人は
+    問いの人だけ）。前提が書けない問いは出さない。長さ・1 問に 2 つ・数を書かせる形は配る前に qa-html の check.mjs で見る。"""
     赤 = []
     if not 行たち:
         return ["問いが 1 つも無い"]
@@ -179,24 +433,83 @@ def 問いの検査(行たち: list[dict], 内部の言葉: list[str] | tuple = 
         if not 問い:
             赤.append(f"{id}: 質問が空")
         elif "\n" in 問い or "\r" in 問い:
-            赤.append(f"{id}: 質問が 2 行以上（1 問 1 行にする・分かっている事は別に渡す）")
-        分かる = _分かっている事(行)
-        if len(分かる) > 分かっている事の行の上限:
-            赤.append(f"{id}: 分かっている事が {len(分かる)} 行（{分かっている事の行の上限} 行まで）")
-        形 = 行.get("形", "judge")
+            赤.append(f"{id}: 質問が 2 行以上（1 問 1 行にする・見つけた事は別に渡す）")
+        形 = _形(行)
         if 形 not in 形たち:
             赤.append(f"{id}: 形 {形!r} は {'・'.join(形たち)} のどれでもない")
+            continue
+        if _まとまり(行) not in まとまりたち:
+            赤.append(f"{id}: まとまり {_まとまり(行)!r} は {'・'.join(まとまりたち)} のどれでもない")
+        elif _種類(行) not in 種類たち:
+            赤.append(f"{id}: 種類 {_種類(行)!r} は {'・'.join(種類たち)} のどれでもない")
+        elif _まとまり(行) not in _種類のまとまり[_種類(行)]:
+            赤.append(f"{id}: 種類 {_種類(行)} とまとまり {_まとまり(行)} が合わない（会社の決まり＝rule・原本＝person か once）")
+        # 前提の 4 欄（書けない問いは出さない）
+        札, 人 = _対象(行)
+        if not 札:
+            赤.append(f"{id}: 何について（対象＝誰／いつ／何）が無い（前提が書けない問いは出さない）")
+        elif len(札) > 対象の上限:
+            赤.append(f"{id}: 何についての札が {len(札)} つ（{対象の上限} つまで）")
+        理由 = _理由(行)
+        if 理由 not in 理由の文:
+            赤.append(f"{id}: なぜ聞くか（理由）{理由!r} は {'・'.join(理由の文)} のどれでもない")
+        elif 形 == "mismatch" and 理由 != "mismatch":
+            赤.append(f"{id}: 食い違いの問い（mismatch）のなぜ聞くかは mismatch")
+        if _まとまり(行) == "person" and not 人:
+            赤.append(f"{id}: 人ごとの事実の問いに問いの人（対象 の 人:<名>）が無い")
+        if 形 == "mismatch" and len(行.get("切り抜き") or []) not in (0, 2):
+            赤.append(f"{id}: 食い違いの問いの切り抜きは 0 枚か 2 枚（2 つの資料を横に並べる）")
+        分かる = _分かっている事(行)
+        if not 分かる:
+            赤.append(f"{id}: 見つけた事（資料名・場所・値）が無い（前提が書けない問いは出さない）")
+        elif len(分かる) > 分かっている事の行の上限:
+            赤.append(f"{id}: 見つけた事が {len(分かる)} 行（{分かっている事の行の上限} 行まで・残りは くわしく へ）")
+        for x in 分かる:
+            if len(re.sub(r"\s", "", x)) > 見つけた事の字の上限:
+                赤.append(f"{id}: 見つけた事の 1 行が {len(re.sub(r'\s', '', x))} 字（{見つけた事の字の上限} 字まで・残りは くわしく へ）")
+        if not _資料の名たち(行):
+            赤.append(f"{id}: 見つけた事が読んだ資料を指していない（資料 か 探した資料 に資料の名）")
+        くわ = _くわしく(行)
+        if not くわ:
+            赤.append(f"{id}: くわしく が無い（前提が書けない問いは出さない）")
+        elif len(くわ) > くわしくの行の上限:
+            赤.append(f"{id}: くわしく が {len(くわ)} 行（{くわしくの行の上限} 行まで）")
+        切 = 行.get("切り抜き") or []
+        if len(切) > 切り抜きの上限:
+            赤.append(f"{id}: 切り抜きが {len(切)} 枚（{切り抜きの上限} 枚まで）")
+        for c in 切:
+            if str(c.get("資料", "")).strip() not in _資料の名たち(行):
+                赤.append(f"{id}: 切り抜きの資料「{c.get('資料', '')}」が 資料・探した資料 に無い（読んだ資料の一覧に載らない）")
+            if not re.fullmatch(r"data:image/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+", str(c.get("画像", ""))):
+                赤.append(f"{id}: 切り抜きの画像は data:image/…;base64 だけ（ページに埋め込む）")
+            if not str(c.get("写っている事", "")).strip():
+                赤.append(f"{id}: 切り抜きに写っている事が無い")
+            for n in _字の並び(c.get("写っている人"), r"[、,\n]"):
+                if n not in 人:
+                    赤.append(f"{id}: 切り抜きに問いの人の外の名「{n}」が写っている（ほかの人の行は塗る）")
+        字 = _選択肢の字(行)
+        if 形 != "fact" and len(字) < 2:
+            赤.append(f"{id}: 選択肢が {len(字)} つ（2 つ以上）")
+        if 形 in ("choose", "mismatch") and len(字) >= 3 and "どちら" in 問い:
+            赤.append(f"{id}: 選択肢が {len(字)} つなのに「どちら」と聞いている（3 つ以上は「どれ」）")
         選 = _選択肢(行)
-        if 形 != "fact" and len(選) < 2:
-            赤.append(f"{id}: 選択肢が {len(選)} つ（2 つ以上）")
-        推奨 = [j for j, o in enumerate(選) if o == 見当のとおり or o.endswith(推奨の印)]
+        推奨 = [j for j, o in enumerate(選) if o["推奨"]]
         if len(推奨) > 1:
             赤.append(f"{id}: 推奨が {len(推奨)} つ（1 つだけ）")
         if any(j != 0 for j in 推奨):
             赤.append(f"{id}: 推奨が 1 つ目でない")
-        if 見当のとおり in 選 and not str(行.get("見当", "")).strip():
+        if any(o["語"] == 見当のとおり for o in 選) and not str(行.get("見当", "")).strip():
             赤.append(f"{id}: 「{見当のとおり}」があるのに見当が空")
-        見える = [問い, *分かる, *選, str(行.get("決まる事", ""))]
+        for o in 選:
+            if 記号の頭.match(o["見出し"]):
+                赤.append(f"{id}: 選択肢に記号を付けない（中身の見出しで書く）: {o['見出し'][:20]}")
+            if o["鍵"] not in ("other", "none") and not o["変わる事"]:
+                赤.append(f"{id}: 選択肢「{o['見出し'][:20]}」にこの答えで変わる事が無い（変わる事 に 誰の・何が・いくら）")
+        for s in [問い, *分かる]:
+            if m := 記号で指す.search(s):
+                赤.append(f"{id}: 記号「{m.group(0)}」で選択肢を指している（中身の言葉で書く）")
+                break
+        見える = [問い, *札, *分かる, *くわ, *(o["見出し"] for o in 選), *(o["変わる事"] for o in 選), *(o["添え書き"] for o in 選)]
         for w in 語たち:
             for s in 見える:
                 if w in s:
@@ -207,141 +520,355 @@ def 問いの検査(行たち: list[dict], 内部の言葉: list[str] | tuple = 
 
 # ── HTML ──────────────────────────────────────────────────
 
-def _見出し(用: str, 支給月: str, 数: int, 支給の月=None) -> tuple[str, str]:
+def _月の数(支給月: str, 支給の月=None) -> str:
+    return re.search(r"（(\d+)月分）", 支給月の名(支給月, 支給の月)).group(1)
+
+
+def _見出し(用: str, 支給月: str, 支給の月=None) -> tuple[str, str]:
     if 用 == "立ち上げ":
-        return "給与計算の設定のご確認", f"給与計算の設定で確かめたい事が {数} 件あります。"
-    月 = re.search(r"（(\d+)月分）", 支給月の名(支給月, 支給の月)).group(1)
-    return f"{月} 月分 給与計算のご確認", f"{月} 月分の給与計算で確かめたい事が {数} 件あります。"
+        return "給与計算の設定のご確認", "答えていただいた内容で、給与計算の設定を決めます。"
+    月 = _月の数(支給月, 支給の月)
+    return f"{月} 月分 給与計算のご確認", f"答えていただいた内容で、{月} 月分の給与を計算します。"
 
 
-def _選択肢の行(鍵: str, 値: str, 見せる: str, 推奨: bool, 中身: str = "") -> str:
-    印 = '<span class="tag-rec">推奨</span>' if 推奨 else ""
-    小 = f"<small>{escape(中身)}</small>" if 中身 else ""
-    return (f'<label class="opt"><input type="radio" name="{鍵}" value="{escape(値, True)}">'
-            f"<span><b>{escape(見せる)}{印}</b>{小}</span></label>")
+def 版の字(支給月: str, 版: int, 支給の月=None, 枚: int | None = None) -> str:
+    """答えに付く版（`__版__`・半角英数字と . _ -）。その組×支給月の配った版の番号と同じ: `2099.04-v2`。
+    分けた枚は枚も付ける（`2099.04-v2-1`・名の `_v2-1` と同じ＝どの枚への答えかが分かる・枚どうしで版が重ならない）。"""
+    return f"{支給月の名(支給月, 支給の月)[:7]}-v{版}" + (f"-{枚}" if 枚 else "")
 
 
-def _箱(行: dict, 順: int) -> str:
+def _読んだ資料(入力: dict, 行たち: list[dict]) -> tuple[list[dict], list[str]]:
+    """はじめの画面の読んだ資料の一覧 [{鍵, 名, 字}]。入力の `読んだ資料`（字か {名, 期間, 受け取った日}）に、
+    問いが指すのに一覧に無い資料の名を足して知らせる。鍵は d1・d2… の順。"""
+    資料, 知らせ = [], []
+    for d in 入力.get("読んだ資料") or []:
+        if isinstance(d, dict):
+            名 = str(d.get("名", "")).strip()
+            添え = "・".join(str(d[k]).strip() for k in ("期間", "受け取った日") if str(d.get(k) or "").strip())
+            資料.append({"名": 名, "字": 名 + (f"（{添え}）" if 添え else "")})
+        elif str(d).strip():
+            資料.append({"名": str(d).strip(), "字": str(d).strip()})
+    ある = {d["名"] for d in 資料}
+    for 行 in 行たち:
+        for 名 in _資料の名たち(行):
+            if 名 not in ある:
+                資料.append({"名": 名, "字": 名})
+                ある.add(名)
+                知らせ.append(f"読んだ資料に「{名}」が無かったので一覧に足した（読んだ資料 に期間・受け取った日を付けて渡す）")
+    for i, d in enumerate(資料, 1):
+        d["鍵"] = f"d{i}"
+    return 資料, 知らせ
+
+
+def _選択肢の行(鍵: str, o: dict, 最初: bool) -> str:
+    印 = '<span class="tag-rec">おすすめ</span>' if o["推奨"] else ""
+    小 = (f'<small class="chg">{escape(o["変わる事"])}</small>' if o["変わる事"] else "") + \
+        (f"<small>{escape(o['添え書き'])}</small>" if o["添え書き"] else "")
+    req = " required" if 最初 else ""
+    印2 = ' data-supp="need"' if o.get("要る") else ""
+    return (f'<label class="opt"><input type="radio" name="{鍵}" value="{o["鍵"]}"{req}{印2}>'
+            f"<span><b>{escape(o['見出し'])}{印}</b>{小}</span></label>")
+
+
+def _箱(行: dict, glabel: str | None, glead: str | None, 資料の鍵: dict) -> str:
+    """問いの箱 1 つ。glabel＝まとまりの見出し（data-glabel・無ければ型の既定の見出し）・glead＝まとまりの最初の問いの 1 行。"""
     鍵 = _鍵(str(行["問いの番号"]).strip())
-    形 = 行.get("形", "judge")
+    形 = _形(行)
     問い = str(行["質問"]).strip()
     選 = _選択肢(行)
-    if 形 == "fact" and not 選:
-        選 = ["分かる（補足に書く）"]
-    opts = []
-    for j, o in enumerate(選):
-        推奨 = o == 見当のとおり or o.endswith(推奨の印)
-        値 = o[: -len(推奨の印)] if o.endswith(推奨の印) else o
-        見せる = f"{見当のとおり}（{行['見当']}）" if o == 見当のとおり else 値
-        opts.append(_選択肢の行(鍵, 値, 見せる, 推奨 and j == 0))
-    for o in 足す選択肢[形]:
-        if o not in 選:
-            opts.append(_選択肢の行(鍵, o, o, False))
     分かる = _分かっている事(行)
-    決まる = str(行.get("決まる事", "")).strip() or 既定の決まる事
-    return "\n".join([
-        f'<fieldset class="q" data-qkey="{鍵}" data-qlabel="{escape(問い, True)}" data-kind="{形}">',
-        f"<legend>{順}. {escape(問い)}</legend>",
-        f'<div class="known">{"<br>".join(escape(x) for x in 分かる)}</div>' if 分かる else "",
-        '<div class="opts">', *opts, "</div>",
-        f'<p class="decides">{escape(決まる)}</p>',
-        f'<div class="supp"><label for="supp_{鍵}">補足（自由に）</label>'
+    見出し = str(行.get("見出し", "")).strip() or 問い
+    まとまり = _まとまり(行)
+    理由 = _理由(行)
+    札, 人 = _対象(行)
+    gl = f' data-glabel="{escape(glabel, True)}"' if glabel else ""
+    表 = 行.get("表") or []
+    表の字 = ""
+    if 表:
+        表の字 = "\n<table>" + "".join(
+            "<tr>" + "".join(f"<{t}>{escape(str(c))}</{t}>" for c in r) + "</tr>"
+            for k, r in enumerate(表) for t in ["th" if k == 0 else "td"]) + "</table>"
+    docs = " ".join(資料の鍵[n] for n in _資料の名たち(行))
+    切 = []
+    for c in 行.get("切り抜き") or []:
+        写る = " ".join(_字の並び(c.get("写っている人"), r"[、,\n]"))
+        切.append(f'<figure class="clip" data-doc="{資料の鍵.get(str(c.get("資料", "")).strip(), "")}" data-shows="{escape(写る, True)}">'
+                 f'<img src="{escape(str(c["画像"]), True)}" alt="{escape(str(c.get("写っている事", "")), True)}">'
+                 f'<figcaption>{escape(str(c.get("場所", "")))}</figcaption></figure>')
+    原文 = str(行.get("原文", "")).strip()
+    くわ = "<br>".join(escape(x) for x in _くわしく(行)) + (f'<div class="orig">{escape(原文)}</div>' if 原文 else "")
+    return "\n".join(x for x in [
+        f'<fieldset class="q" data-qkey="{鍵}" data-qlabel="{escape(見出し, True)}" data-kind="{形}" data-group="{まとまり}"{gl}>',
+        f'<p class="glead">{escape(glead)}</p>' if glead else "",
+        '<p class="about">' + "".join(f'<span class="who">{escape(x)}</span>' if x in 人 else f"<span>{escape(x)}</span>" for x in 札) + "</p>",
+        f"<legend>{escape(問い)}</legend>",
+        f'<p class="why" data-why="{理由}">{理由の文[理由]}</p>',
+        f'<div class="known" data-docs="{docs}">{"<br>".join(escape(x) for x in 分かる)}{表の字}</div>',
+        f'<div class="clips">{"".join(切)}</div>' if 切 else "",
+        f'<details class="more"><summary>くわしく</summary>{くわ}</details>',
+        '<div class="opts">',
+        *(_選択肢の行(鍵, o, j == 0) for j, o in enumerate(選)),
+        '<p class="or">または</p>',
+        f'<label class="opt"><input type="radio" name="{鍵}" value="{分からない}"><span><b>{分からないの字}</b></span></label>',
+        "</div>",
+        f'<div class="supp"><label for="supp_{鍵}">ひとこと（なくても大丈夫です）</label>'
         f'<textarea id="supp_{鍵}" name="supp_{鍵}" rows="2"></textarea></div>',
         "</fieldset>",
-    ]).replace("\n\n", "\n")
+    ] if x)
 
 
 def 作る(入力: dict) -> dict:
-    """確認ページを 1 枚起こす。
+    """確認ページを 1 枚起こす（qa-html の 1 つの型・前提の 3 段・答えの形 qa-html/2）。
 
     入力: 組・支給月・用（立ち上げ／毎月）・問い（質問と回答の行の list）・今ある名（置き場の名の一覧・任意）・
-          支給の月（会社の `支払.支給の月`・任意・無ければ既定の翌月で知らせ）・
-          宛先（send か copy・既定 send）・宛名（任意）・内部の言葉（任意）。
-    返す物: 赤（空でなければ HTML を返さない）・知らせ・版・名・下書きの名・置き場・前の版・問いの数・html。"""
+          支給の月（会社の `支払.支給の月`・任意・無ければ既定の翌月で知らせ）・宛先（send・copy・artifact・既定 send）・
+          読んだ資料（字か {名, 期間, 受け取った日} の list）・答えるまでの扱い・まとまりの1行（{rule|person|once: 1 行}）・
+          宛名・期限・この後のこと・会社の色（#rrggbb）・内部の言葉（どれも任意）。差出人・連絡先の欄は型から外した
+          （名乗りと問い合わせ先は配る人の送る文に書く）＝渡されても使わず知らせる。
+    並べ方: 1 枚の中で前半＝会社の決まり（rule）・後半＝原本（person → once）の 2 部（オーナーの決定 2026-11-16）。
+    返す物: 赤（空でなければ HTML を返さない）・知らせ・版・版の字・名・下書きの名・置き場・前の版・前の版たち・問いの数・
+    部（{会社の決まり: 問いの数, 原本: 問いの数}）・html・枚たち（[{枚, 名, 下書きの名, 版の字, 問いの数, 問いの番号, 部, html}]）。
+    問いが 1 枚の上限（12 問）を超えたら、並びのまま同じ版の枚に分ける（名 `_v<版>-<枚>`・版の字 `…-v<版>-<枚>`）。その時は
+    上の段の 名・下書きの名・版の字・html は None で、枚たち を全部配る（1 回の呼び出しで分ける＝分けた枚どうしで版が重ならない）。"""
     組, 支給月, 用 = 入力["組"], 入力["支給月"], 入力["用"]
     支給の月 = 入力.get("支給の月")
     知らせ = 支給月の名と知らせ(支給月, 支給の月)[1]
     if 用 not in 用たち:
         raise ValueError(f"用 {用!r} は {'・'.join(用たち)} のどれか")
     宛先 = 入力.get("宛先", "send")
-    if 宛先 not in ("send", "copy"):
-        raise ValueError(f"宛先 {宛先!r} は send か copy")
+    if 宛先 not in 宛先たち:
+        raise ValueError(f"宛先 {宛先!r} は {'・'.join(宛先たち)} のどれか")
+    色 = 入力.get("会社の色") or 既定の色
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", 色):
+        raise ValueError(f"会社の色 {色!r} は #rrggbb の 1 色")
     行たち = 入力["問い"]
     版 = 次の版(組, 支給月, 入力.get("今ある名", []), 支給の月)
+    版の = 版の字(支給月, 版["版"], 支給の月)
     赤 = 問いの検査(行たち, 入力.get("内部の言葉", ()))
+    # 同じ月の次の版（配り直し）は前の版がその月だけの物の問いを持っている＝最初の版にだけ当てる
+    if 用 == "毎月" and 版["版"] == 1 and not any(_問いの箱(行) == その月だけの物 for 行 in 行たち):
+        赤.append(f"毎月の確認ページに「{その月だけの物}」の問いが無い（初期設定/設問.py の その月だけの物の問い で起こして足す）")
+    返す = {"知らせ": 知らせ, **版, "版の字": 版の, "問いの数": len(行たち)}
     if 赤:
-        return {"赤": 赤, "知らせ": 知らせ, **版, "問いの数": len(行たち), "html": None}
-    題, 前書き = _見出し(用, 支給月, len(行たち), 支給の月)
+        return {"赤": 赤, **返す, "html": None}
+    for k in 外した欄:
+        if k in 入力:
+            知らせ.append(f"{k} は確認ページの型から外した欄（使わない）。名乗りと問い合わせ先は配る人の送る文に書く（呼ぶ側から {k} を外す）")
+    資料, k = _読んだ資料(入力, 行たち)
+    知らせ += k
+    資料の鍵 = {d["名"]: d["鍵"] for d in 資料}
+    題, 前書き = _見出し(用, 支給月, 支給の月)
+    期限 = str(入力.get("期限") or "").strip()
+    次 = str(入力.get("この後のこと") or "").strip() or (既定のこの後_立ち上げ if 用 == "立ち上げ" else 既定のこの後_毎月)
+    月 = None if 用 == "立ち上げ" else _月の数(支給月, 支給の月)
+    glabels = {**既定のまとまりの見出し, **({"once": f"原本・{月} 月分だけの事"} if 月 else {})}
+    渡した1行 = {str(k): str(v) for k, v in (入力.get("まとまりの1行") or {}).items()}
+    gleads = {"rule": 既定のまとまりの1行["rule"], "person": 既定のまとまりの1行["person"],
+              "once": f"{月} 月分だけの事を確かめます" if 月 else 既定のまとまりの1行["once"]}
+    # 1 枚の中で前半＝会社の決まり（rule）・後半＝原本（person → once）。並びは qa-html の rule → person → once のまま
+    並び = sorted(行たち, key=lambda r: まとまりたち.index(_まとまり(r)))
+    # 1 枚の問いの上限（qa-html の 12 問）を超えたら、並びのまま枚に分ける。分けた枚は同じ版の 1 枚目・2 枚目
+    # （名 `_v<版>-<枚>`・版の字 `…-v<版>-<枚>`）＝枚どうしで名と版が重ならず、次の版（配り直し）は全部の枚を前の版に数える
+    分ける = len(並び) > 枚の問いの上限
+    枚たち = []
+    for i in range(0, len(並び), 枚の問いの上限):
+        束 = 並び[i:i + 枚の問いの上限]
+        枚 = i // 枚の問いの上限 + 1 if 分ける else None
+        g1 = dict(gleads)
+        if not any(_まとまり(r) == "person" for r in 束):
+            g1["once"] = 既定の後半の頭 + g1["once"]   # 後半が今回だけの事から始まる
+        g1.update(渡した1行)
+        箱たち, 見た = [], set()
+        for 行 in 束:
+            g = _まとまり(行)
+            箱たち.append(_箱(行, glabels.get(g), g1[g] if g not in 見た else None, 資料の鍵))
+            見た.add(g)
+        字 = 版の字(支給月, 版["版"], 支給の月, 枚)
+        枚たち.append({
+            "枚": 枚 or 1, "名": 名(組, 支給月, 版["版"], 支給の月=支給の月, 枚=枚),
+            "下書きの名": 名(組, 支給月, 版["版"], 下書き=True, 支給の月=支給の月, 枚=枚),
+            "版の字": 字, "問いの数": len(束), "問いの番号": [str(r.get("問いの番号", "")) for r in 束],
+            "部": {k: sum(1 for r in 束 if _種類(r) == k) for k in 種類たち},
+            "html": _一枚の_html(入力, 題, 前書き, 宛先, 色, 資料, 期限, 次, 字, 箱たち),
+        })
+    部 = {k: sum(1 for r in 行たち if _種類(r) == k) for k in 種類たち}
+    if 分ける:   # 分けた時は 名・下書きの名・版の字・html を 枚たち で返す（上の段は None＝1 枚の名と取り違えない）
+        知らせ.append(f"問いが {len(並び)} 問（1 枚 {枚の問いの上限} 問まで）＝{len(枚たち)} 枚に分けた（同じ版 v{版['版']} の枚・枚たち を全部配る）")
+        return {"赤": [], **返す, "名": None, "下書きの名": None, "版の字": None, "部": 部, "html": None, "枚たち": 枚たち}
+    return {"赤": [], **返す, "部": 部, "html": 枚たち[0]["html"], "枚たち": 枚たち}
+
+
+def _一枚の_html(入力: dict, 題: str, 前書き: str, 宛先: str, 色: str, 資料: list[dict], 期限: str, 次: str, 版の: str,
+              箱たち: list[str]) -> str:
     t = 雛形.read_text(encoding="utf-8")
     t = re.sub(r"^<!doctype html>\n<!--.*?-->\n", "<!doctype html>\n", t, count=1, flags=re.S)
-    箱たち = "\n\n".join(_箱(行, i) for i, 行 in enumerate(行たち, 1))
-    for k, v in (("{{題}}", 題), ("{{宛先}}", 宛先), ("{{宛名}}", 入力.get("宛名") or "ご確認のお願い"), ("{{前書き}}", 前書き)):
-        t = t.replace(k, escape(v))
-    t = t.replace("<!--問い-->", 箱たち)
-    return {"赤": [], "知らせ": 知らせ, **版, "問いの数": len(行たち), "html": t}
+    t = re.sub(r"<title>\{\{[^}]*\}\}</title>", lambda _: f"<title>{escape(題)}</title>", t, count=1)
+    t = re.sub(r'<body data-dest="\{\{[^}]*\}\}" style="--brand:#[0-9a-fA-F]{6}">',
+               lambda _: f'<body data-dest="{宛先}" style="--brand:{色}">', t, count=1)
+    頭 = "\n".join([
+        '<header class="top">',
+        f'  <p class="to">{escape(入力.get("宛名") or 既定の宛名)}</p>',
+        f"  <h1>{escape(題)}</h1>",
+        f'  <p class="lead">{escape(前書き)}</p>',
+        '  <div class="docs"><h2>読んだ資料（この中から聞いています）</h2>',
+        "  <ul>" + "".join(f'<li data-doc="{d["鍵"]}">{escape(d["字"])}</li>' for d in 資料) + "</ul>",
+        "  <p>ほかに新しい資料がある時は、最後の「ほかに伝えたい事」で教えてください。</p></div>",
+        f'  <p class="hold">{escape(str(入力.get("答えるまでの扱い") or "").strip() or 既定の答えるまでの扱い)}</p>',
+        f'  <div class="box">{escape(f"{期限} までにお願いします。" if 期限 else 既定の期限の字)}</div>',
+        "</header>",
+    ])
+    t = re.sub(r'<header class="top">.*?</header>', lambda _: 頭, t, count=1, flags=re.S)
+    t = re.sub(r'(<input type="hidden" name="__版__" value=")\{\{[^}]*\}\}(">)', lambda m: m.group(1) + 版の + m.group(2), t, count=1)
+    印 = '<input type="hidden" name="__受付番号__" value="">\n'
+    前, 後 = t.split(印, 1)
+    後 = 後[後.index('<fieldset class="q free"'):]
+    t = 前 + 印 + "\n" + "\n\n".join(箱たち) + "\n\n" + 後
+    t = re.sub(r'(<p class="next">)\{\{[^}]*\}\}(</p>)', lambda m: m.group(1) + escape(次) + m.group(2), t, count=1)
+    if "{{" in t:
+        raise ValueError(f"雛形の差し込みが残った: {re.findall(r'{{[^}]*}}', t)[:3]}（雛形を qa-html の型から写し直す）")
+    return t
 
 
-# ── 貼り戻しと管理表 ─────────────────────────────────────────
+# ── 貼り戻し（qa-html/2 の答え → 質問と回答の行） ───────────────
 
-def _写しを読む(写し: str) -> tuple[list[dict], str]:
-    """qa-html の写す形の貼り戻しの文字列 → [{見出し, 回答, 補足}]・全体の補足。"""
-    out, 全体, 中 = [], [], None
-    for line in 写し.splitlines():
-        if m := re.match(r"■ 問(\d+): (.*)$", line):
-            out.append({"順": int(m.group(1)), "見出し": m.group(2), "回答": "", "補足": ""})
-            中 = "問"
-        elif line.startswith("■ その他・全体の意向:"):
-            中 = "全体"
-        elif 中 == "問" and (m := re.match(r"\s*→ 回答: (.*)$", line)):
-            out[-1]["回答"] = "" if m.group(1) == "（未選択）" else m.group(1)
-        elif 中 == "問" and (m := re.match(r"\s*→ 補足: (.*)$", line)):
-            out[-1]["補足"] = m.group(1)
-        elif 中 == "全体" and line.strip() and line.strip() != "（なし）":
-            全体.append(line.strip())
-    return out, "\n".join(全体)
+def _受付番号を出す(回答日: str, p: dict) -> str:
+    """JS が切られて受付番号が空で届いた時に、受ける側が同じ形 R<YYMMDD>-<英数 4 字> で出す（中身から決まる）。"""
+    d = re.sub(r"\D", "", 回答日)[2:8]
+    h = hashlib.sha1(json.dumps([p.get("answers"), p.get("supp"), p.get("free")], ensure_ascii=False, sort_keys=True).encode()).digest()
+    字 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return f"R{d}-" + "".join(字[b % len(字)] for b in h[:4])
 
 
-def _元の答え(行: dict, 見えた答え: str) -> str:
-    """画面の字（見当のとおり（X）・推奨の字）を質問と回答に書く答えの字へ戻す。"""
-    if not 見えた答え:
-        return ""
-    if 見えた答え == 見当のとおり or 見えた答え.startswith(見当のとおり + "（"):
-        return 見当のとおり
-    return 見えた答え
+def _並び(v) -> list[str]:
+    if v is None:
+        return []
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [str(v).strip()] if str(v).strip() else []
 
 
-def 貼り戻し(行たち: list[dict], 答え, 回答日: str) -> dict:
-    """HTML の答えを質問と回答の行へ戻す。答え は写す形の文字列か、送る形のフォームの値（{鍵: 値, supp_鍵: 補足}）。
+def _送信を読む(答え, 回答日: str, 鍵たち=()) -> tuple[dict | None, list[str]]:
+    """1 送信 → qa-html/2 の形（answers・labels・supp・free・version・receipt）。読めなければ (None, 赤)。
 
-    返す物: 行たち（{問いの番号, 回答, 回答日}・答えの無い問いは出さない）・全体の補足・赤。
-    回答 の字は「選んだ答え」か「選んだ答え ／ 補足: …」（補足だけなら「補足: …」）。"""
-    赤, 戻す = [], []
+    受ける物: qa-html/2 の JSON（dict）・写す形の貼り戻しの字（最後の行 `qa-json: {…}` を読む）・送る形のフォームの値
+    （{鍵: 選択肢の鍵, supp_鍵: 文, __自由記入__, __版__, __受付番号__}・配る口が足した自分の印〔シート・トークン・答えた方〕は
+    問いの鍵たちの外なので読まない）。前の形の写し（qa-json の行が無い）は読まない。写しに qa-json の行が幾つもあれば最後の行。"""
     if isinstance(答え, str):
-        読んだ, 全体 = _写しを読む(答え)
-        if len(読んだ) != len(行たち):
-            return {"行たち": [], "全体の補足": 全体, "赤": [f"写しの問いが {len(読んだ)} つ（配った問いは {len(行たち)} つ）"]}
-        組たち = []
-        for 行, r in zip(行たち, 読んだ):
-            if r["見出し"] != str(行["質問"]).strip():
-                赤.append(f"問{r['順']}: 見出しが配った問いと違う")
-            組たち.append((行, r["回答"], r["補足"]))
+        m = re.findall(r"^qa-json: (\{.*\})[ \t\r]*$", 答え, re.M)
+        if not m:
+            return None, ["写しに qa-json の行が無い（前の形の確認ページの写しは読まない＝今の版で配り直して答えていただく）"]
+        try:
+            p = json.loads(m[-1])
+        except json.JSONDecodeError as e:
+            return None, [f"qa-json の行が JSON として読めない: {e}"]
+    elif isinstance(答え, dict) and "form" in 答え:
+        p = dict(答え)
+    elif isinstance(答え, dict):   # 送る形のフォームの値
+        answers, supp = {}, {}
+        for k, v in 答え.items():
+            if k.startswith("supp_") and k[5:] in 鍵たち:
+                if _並び(v):
+                    supp[k[5:]] = "\n".join(_並び(v))
+            elif k in 鍵たち:
+                answers[k] = _並び(v)
+        p = {"form": 答えの形, "answers": answers, "labels": {}, "supp": supp,
+             "free": "\n".join(_並び(答え.get(自由記入))), "version": "\n".join(_並び(答え.get(版の名))),
+             "receipt": "\n".join(_並び(答え.get(受付番号の名)))}
     else:
-        全体 = str(答え.get(自由記入, "")).strip()
-        組たち = []
-        for 行 in 行たち:
-            鍵 = _鍵(str(行["問いの番号"]).strip())
-            v = 答え.get(鍵, "")
-            v = "、".join(map(str, v)) if isinstance(v, list) else str(v)
-            組たち.append((行, v.strip(), str(答え.get("supp_" + 鍵, "")).strip()))
-    if 赤:
-        return {"行たち": [], "全体の補足": 全体, "赤": 赤}
-    for 行, a, s in 組たち:
-        a = _元の答え(行, a)
-        if not a and not s:
+        return None, [f"答えの形が読めない（{type(答え).__name__}）"]
+    if p.get("form") != 答えの形:
+        return None, [f"答えの形 {p.get('form')!r} は {答えの形} でない"]
+    p = {**p, "answers": {str(k): _並び(v) for k, v in (p.get("answers") or {}).items()},
+         "labels": {str(k): _並び(v) for k, v in (p.get("labels") or {}).items()},
+         "supp": {str(k): str(v).strip() for k, v in (p.get("supp") or {}).items() if str(v).strip()},
+         "free": str(p.get("free") or "").strip(), "version": str(p.get("version") or "").strip(),
+         "receipt": str(p.get("receipt") or "").strip()}
+    if not p["receipt"]:
+        p["receipt"] = _受付番号を出す(回答日, p)
+    elif not re.fullmatch(r"R\d{6}-[A-Z0-9]{4}", p["receipt"]):
+        return None, [f"受付番号 {p['receipt']!r} が R<YYMMDD>-<英数 4 字> でない"]
+    return p, []
+
+
+def _答えの語(行: dict, 値たち: list[str], 見出したち: list[str]) -> tuple[list[str], list[str]]:
+    """選択肢の鍵 → 質問と回答に書く語。今の行の選択肢に無い鍵は、答えに付いた見出しで書いて知らせる。"""
+    表 = {o["鍵"]: o["語"] for o in _選択肢(行)}
+    語たち, 知らせ = [], []
+    for i, v in enumerate(値たち):
+        if v == 分からない:
+            語たち.append(分からないの語)
+        elif v in 表:
+            語たち.append(表[v])
+        else:
+            見 = 見出したち[i] if i < len(見出したち) else v
+            語たち.append(見)
+            知らせ.append(f"問い {行['問いの番号']}: 選択肢の鍵 {v!r} が今の問いに無い（見出し「{見}」のまま書いた）")
+    return 語たち, 知らせ
+
+
+def 貼り戻し(行たち: list[dict], 答え, 回答日: str, 版: str | None = None) -> dict:
+    """確認ページの答え（qa-html/2）を、問いの鍵で質問と回答の行へ戻す。
+
+    行たち＝その確認ページの問いの質問と回答の行（シートの今の行。送り直しで足した行があればそれも）。
+    答え＝1 送信か送信の並び（古い順）。1 送信は qa-html/2 の JSON・写す形の貼り戻しの字・送る形のフォームの値のどれか。
+    版＝今配っている版の字（`版の字`・任意）。答えの版が違えば 回答 に「古い版」の印を付ける。
+
+    返す物:
+      受付たち: 1 送信 1 行（受付番号・版・古い版・回答日）＝送り直しは新しい行（前の受付を消さない）。
+      行たち: 質問と回答へ当てる手順。問いの鍵ごとに、今の行の 回答 が空なら {する: 書く, 問いの番号, 回答, 回答日}、
+        答えが既にあれば {する: 足す, 行: 今の行の写しに新しい 回答・回答日}（前の答えの行は消さない）。同じ受付番号を
+        その問いの番号のどの行かにもう在る受付番号は飛ばす（2 回貼っても同じ・古い送信を貼り直しても新しい答えの下に来ない）。
+        表として読む時は問いの番号ごとに一番下の行が正。
+      全体の補足・知らせ・赤（1 送信でも読めなければ全部を返さない＝赤を直してから全部を貼り直す）。
+    回答 の字: 「<答え>[ ／ 補足: …] ／ 受付: <受付番号>（版 <版>[・古い版]）」。分からない は「分からない」。"""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(回答日)):
+        return {"受付たち": [], "行たち": [], "全体の補足": "", "知らせ": [], "赤": [f"回答日 {回答日!r} は YYYY-MM-DD でない"]}
+    送信たち = 答え if isinstance(答え, list) else [答え]
+    今の行: dict[str, dict] = {}
+    貼った: dict[str, set] = {}   # 問いの鍵 → その番号のどれかの行に在る受付番号
+    for 行 in 行たち:
+        番号 = str(行.get("問いの番号", "")).strip()
+        if 番号:
+            今の行[_鍵(番号)] = dict(行)   # 同じ番号が幾つもあれば一番下の行が今の行
+            貼った.setdefault(_鍵(番号), set()).update(re.findall(r"受付: (R\d{6}-[A-Z0-9]{4})（", str(行.get("回答", ""))))
+    赤, 知らせ, 受付たち, 手順, 全体 = [], [], [], [], []
+    for 答 in 送信たち:
+        p, r = _送信を読む(答, 回答日, 今の行)
+        if r:
+            赤 += r
             continue
-        回答 = a + (f" ／ 補足: {s}" if a and s else "") + (f"補足: {s}" if s and not a else "")
-        戻す.append({"問いの番号": str(行["問いの番号"]).strip(), "回答": 回答, "回答日": 回答日})
-    return {"行たち": 戻す, "全体の補足": 全体, "赤": []}
+        外 = [k for k in (*p["answers"], *p["supp"]) if k not in 今の行]
+        if 外:
+            赤.append(f"受付 {p['receipt']}: 配った問いに無い鍵 {sorted(set(外))}（問いの行を配った時の物にそろえて渡す）")
+            continue
+        古い = bool(版) and p["version"] != 版
+        if not 版:
+            知らせ.append(f"受付 {p['receipt']}: 今の版が渡されていない（古い版かを見ていない）")
+        受付たち.append({"受付番号": p["receipt"], "版": p["version"], "古い版": 古い, "回答日": 回答日})
+        印 = f"受付: {p['receipt']}（版 {p['version'] or '無し'}{'・古い版' if 古い else ''}）"
+        if p["free"]:
+            全体.append(p["free"])
+        for 鍵, 行 in 今の行.items():
+            値たち, s = p["answers"].get(鍵, []), p["supp"].get(鍵, "")
+            if not 値たち and not s:
+                continue
+            if p["receipt"] in 貼った.get(鍵, set()):
+                continue
+            語たち, k = _答えの語(行, 値たち, p["labels"].get(鍵, []))
+            知らせ += k
+            a = "、".join(語たち)
+            回答 = " ／ ".join(x for x in [a, f"補足: {s.replace(chr(10), ' / ')}" if s else "", 印] if x)
+            if str(行.get("回答", "")).strip():
+                新 = {**行, "回答": 回答, "回答日": 回答日, "反映済み": ""} if "反映済み" in 行 else {**行, "回答": 回答, "回答日": 回答日}
+                手順.append({"する": "足す", "問いの番号": 行["問いの番号"], "回答": 回答, "回答日": 回答日, "行": 新})
+            else:
+                新 = {**行, "回答": 回答, "回答日": 回答日}
+                手順.append({"する": "書く", "問いの番号": 行["問いの番号"], "回答": 回答, "回答日": 回答日})
+            今の行[鍵] = 新
+            貼った.setdefault(鍵, set()).add(p["receipt"])
+    if 赤:
+        return {"受付たち": [], "行たち": [], "全体の補足": "", "知らせ": 知らせ, "赤": 赤}
+    return {"受付たち": 受付たち, "行たち": 手順, "全体の補足": "\n".join(全体), "知らせ": 知らせ, "赤": []}
 
 
 def 管理表の行(会社: str, 支給月: str | None, 用: str, 何のための質問か: str, 問いの数: int, URL: str, 載せた日: str,
@@ -375,7 +902,7 @@ def _口(名: str, 入力: dict):
     if 名 == "検査":
         return {"赤": 問いの検査(入力["問い"], 入力.get("内部の言葉", ()))}
     if 名 == "貼り戻し":
-        return 貼り戻し(入力["問い"], 入力["答え"], 入力["回答日"])
+        return 貼り戻し(入力["問い"], 入力["答え"], 入力["回答日"], 入力.get("版"))
     if 名 == "管理表の行":
         return 管理表の行(**入力)
     raise SystemExit(f"口 {名!r} は 作る・検査・貼り戻し・管理表の行 のどれか")

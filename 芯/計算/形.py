@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from fractions import Fraction
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
 確定 = "確定"
@@ -34,6 +36,23 @@ def 数(v, 名: str = "値") -> Decimal | None:
         raise 形の誤り(f"{名} が数でない: {v!r}") from None
 
 
+def 時間(v, 名: str = "値") -> Fraction | None:
+    """時間の値（時間の数〔Decimal・int・数の字〕か h:mm の字）→ 時間の Fraction。空は None。float は受けない。
+    h:mm は分数のまま持つ（`161:20`→161⅓ 時間。10 進に直すと循環小数で、割った単価が丸めで 1 円ずれうる）。"""
+    if isinstance(v, str):
+        m = re.fullmatch(r"(\d+):([0-5]\d)", v.strip())
+        if m:
+            return Fraction(int(m.group(1)) * 60 + int(m.group(2)), 60)
+    x = 数(v, 名)
+    return None if x is None else Fraction(x)
+
+
+def 分数を小数に(f: Fraction) -> Decimal:
+    """分数 → Decimal（割り切れる時は丸めの前の値がちょうど整数のまま。分の時間を 10 進に直す誤差で 1 円ずれないため）。
+    割り切れない分数も、丸めの境（整数・0.5）にちょうど当たる値は 10 進で表せるので、丸めた後の円は分数で丸めたのと同じ。"""
+    return Decimal(f.numerator) / Decimal(f.denominator)
+
+
 # ---- 端数の語（会社の決まり §2 の選べる値）→ Decimal の丸め ----
 _丸めの語 = {
     "切捨て": ROUND_FLOOR,
@@ -52,6 +71,38 @@ def 語をそろえる(語) -> str:
     if s.startswith("特約"):
         s = s[2:].lstrip(":：（(").rstrip("）)")
     return s
+
+
+# ---- 人.区分（初期設定/項目.json の 人.区分 の選べる値）----
+区分の語 = ("社員", "パート", "役員", "兼務役員", "委託", "委託の併用")
+併せ持てる区分 = (frozenset({"役員", "委託の併用"}),)   # 辞書の書き方 `役員＋委託の併用`（役員報酬と委託分を 1 枚に）
+
+
+def 区分を読む(v) -> frozenset | None:
+    """`人.区分` → 区分の語の組。項目の辞書の書き方のとおり空白と後ろの括弧の説明を除いて読み
+    （`委託の併用（雇用と委託を 1 枚の明細に）` と `委託の併用` を同じに）、`＋` で並べた語は併せ持つ（今は `役員＋委託の併用` だけ）。
+    空は空の組（既定の 社員 は 要る値 が埋める）。知らない語・併せ持てない組は None（読めない＝要る値 が仮＋問い）。"""
+    s = "".join(str(v if v is not None else "").split()).replace("+", "＋")
+    if s.endswith("）") and "（" in s and not s.startswith("（"):
+        s = s.split("（", 1)[0]
+    if not s:
+        return frozenset()
+    部 = frozenset(s.split("＋"))
+    if not 部 <= set(区分の語) or len(s.split("＋")) != len(部):
+        return None
+    if len(部) > 1 and 部 not in 併せ持てる区分:
+        return None
+    return 部
+
+
+def 区分か(v, *語) -> bool:
+    """値たち v の `人.区分` が 語 のどれかを含むか（`役員＋委託の併用` は 役員 でも 委託の併用 でもある）。読めない区分は偽。"""
+    return bool((区分を読む(v.get("人.区分")) or frozenset()) & set(語))
+
+
+def 区分だけか(v, 語) -> bool:
+    """値たち v の `人.区分` がちょうど 語 1 つか（例 委託だけ・役員だけ）。"""
+    return 区分を読む(v.get("人.区分")) == frozenset({語})
 
 
 def 丸めの語か(語) -> bool:

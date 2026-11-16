@@ -34,7 +34,7 @@ import 当てる as 当
 打刻のまま = "打刻の丸めのまま"
 前の道具 = "前の道具の丸め"
 前の列 = "勤務の長さの丸め（分）"
-委託の区分 = ("委託", "委託の併用")
+委託の区分 = ("委託", "委託の併用", "役員＋委託の併用")
 _字 = re.compile(r"^(\d+)分(切捨て|切上げ|四捨五入)$")
 
 
@@ -95,7 +95,7 @@ def 当てる(o, 記, 前=None):
     分かる = [r for r in 在る if 前の値.get(_値(型rows, r, "型の名")) == str(型rows[r][i]).strip()]
     区分 = _区分たち(o)
     委託が居る = any(k in 委託の区分 for k in 区分)
-    雇用が居る = any(k != "委託" and k != "役員" for k in 区分)
+    雇用が居る = any(k not in ("委託", "役員", "役員＋委託の併用") for k in 区分)
     会社rows = o.シート.get(マスタ, {}).get("会社")
     書ける = bool(会社rows) and all(当.列の番号(会社rows, c) is not None for c in ("項目", "今の値"))
     既に = 書ける and any(_値(会社rows, r, "項目") == 項目 and _値(会社rows, r, "会社") in ("", o.会社) and _値(会社rows, r, "今の値")

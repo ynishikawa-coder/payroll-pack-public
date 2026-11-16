@@ -8,6 +8,7 @@
 （マスタ「変更の記録」と質問と回答の道。入口の外）。
 """
 from . import 口, 手当控除の一覧
+from ._日の表 import 要確認の時刻
 
 
 def 読む(連絡たち: list[dict], 文脈, 項目の辞書: dict | None = None, 単価: dict | None = None) -> 口.結果:
@@ -31,6 +32,7 @@ def 読む(連絡たち: list[dict], 文脈, 項目の辞書: dict | None = None
         if str(c.get("区分", "")).strip():
             m.区分を足す(c["区分"], 文脈)
         m.労働(c.get("出"), c.get("退"), "手書き")
+        m.理由 += 要確認の時刻(文脈, *((欄, (str(c.get(欄) or "").strip(), "手書き")) for 欄 in ("出", "退")))
         if str(c.get("休憩", "")).strip():
             v = 口.長さの分(c["休憩"])
             if v is None:

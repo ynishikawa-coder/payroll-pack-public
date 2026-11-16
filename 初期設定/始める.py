@@ -48,11 +48,19 @@ def _要るか(it: dict, 入力: dict) -> bool:
     要る = it.get("要る時")
     if not 要る:
         return True
-    値たち = {_効く値(要る["項目"], 入力)}
+    値たち = {_読み(_効く値(要る["項目"], 入力))}
     for 段 in ("勤務の型", "人"):
         for r in 入力.get(段, []):
-            値たち.add(r.get(要る["項目"]))
-    return bool(値たち & set(要る["値"]))
+            値たち.add(_読み(r.get(要る["項目"])))
+    return bool(値たち & {_読み(v) for v in 要る["値"]})
+
+
+def _読み(v):
+    """選べる値の語を空白と後ろの括弧を除いて読む（`4 週 4 休（起算日つき）` と `4週4休` を同じに。芯/集計 の読みと同じ）。"""
+    if v is None:
+        return None
+    s = "".join(str(v).split())
+    return s.split("（", 1)[0] if s.endswith("）") and not s.startswith("（") else s
 
 
 def 足りない値(入力: dict) -> list[dict]:
@@ -93,7 +101,7 @@ def 問いを起こす(入力: dict) -> list[dict]:
         誰 = f"（{欠け['段']}: {'、'.join(欠け['誰'])}）" if 欠け["誰"] else ""
         row = {
             "会社": 会社,
-            "問いの番号": f"Q{支給月[:4]}{支給月[5:7]}-{番号:02d}",
+            "問いの番号": 口.問いの番号(支給月, 番号),
             "支給月": 支給月,
             "聞いた日": 入力.get("今日", dt.date.today().isoformat()),
             "誰に": "先方",
