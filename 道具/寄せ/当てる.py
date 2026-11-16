@@ -1415,6 +1415,11 @@ def 大きさ(*grids):
     return max((len(g) for g in grids), default=1) or 1, max((len(r) for g in grids for r in g), default=1) or 1
 
 
+# 値を書く 手順の 書き方: 値は読んだ字のまま書く（Sheets の valueInputOption=RAW）。字を数・日付・式に読ませない＝
+# NO 0001 の頭の 0・支給月 YYYY.MM支給・01 のような字が化けない（寄せは表示の字を読み、表示の字を書く）
+字のまま = "RAW"
+
+
 def 敷く(grid, h, w):
     """値を書く 1 手で前の値を残さないよう、前と後の大きい方まで空で埋めた格子にする（消してから書く 2 手にしない）。"""
     return [[(grid[r][c] if r < len(grid) and c < len(grid[r]) else "") for c in range(w)] for r in range(h)]
@@ -1500,14 +1505,16 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
         書く.append({"する": "md を作る", "名": 今の名(m), "本文": text})
     for _, _, nf, nt, rows, after in 受け + 渡し:
         h, w = 大きさ(rows or [], after)
-        書く.append({"する": "値を書く", "ファイル": nf, "タブ": nt, "範囲": f"A1:{列の字(w)}{h}", "値": 敷く(after, h, w)})
+        書く.append({"する": "値を書く", "ファイル": nf, "タブ": nt, "範囲": f"A1:{列の字(w)}{h}", "値": 敷く(after, h, w),
+                   "書き方": 字のまま})
 
     # 戻す手順＝全部書いた後の形に当てる逆（寄せの前の値から作る）。値が戻るタブ（渡した側）を先に、md・受けた側を後に
     for _, _, nf, nt, rows, after in 渡し + 受け:
         if (nf, nt) in 足した and not rows:
             continue
         h, w = 大きさ(rows or [], after)
-        戻す.append({"する": "値を書く", "ファイル": nf, "タブ": nt, "範囲": f"A1:{列の字(w)}{h}", "値": 敷く(rows or [], h, w)})
+        戻す.append({"する": "値を書く", "ファイル": nf, "タブ": nt, "範囲": f"A1:{列の字(w)}{h}", "値": 敷く(rows or [], h, w),
+                   "書き方": 字のまま})
     戻した_md = 戻した_md or {}
     for m, _ in md_変わる:  # 作った md を 90_履歴 へ外し、移した元（写しから戻した md は実の写しの名）を同じ名へ戻す
         写し = 戻した_md.get(m) or f"90_履歴/消す_{消す日}_{今の名(m).replace('/', '_')}"
