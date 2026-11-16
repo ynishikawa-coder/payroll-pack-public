@@ -7,6 +7,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+曜日 = "月火水木金土日"  # date.weekday() の順
+
+# 曜日ごとの働いた時間（分）の語。その曜日の日（表 A の日付＝日またぎは始まりの日）の総労働（所定内＋法定内残業＋法定外残業＋法定休日）
+曜日の時間の頭 = "曜日の時間:"
+曜日の時間の語 = tuple(曜日の時間の頭 + c for c in 曜日)
+
 # 月の数字の語（勤怠の形.md 5 節「月の数字から入る口」の項目と単位）。出す順もこの順。
 月の語: tuple[tuple[str, str], ...] = (
     ("所定日数", "日"),
@@ -30,13 +36,13 @@ from decimal import Decimal, InvalidOperation
     ("所定休日", "分"),
     ("遅刻早退", "分"),
     ("夜勤の回数", "回"),
+    ("夜勤の日を除く所定内", "分"),
+    *((k, "分") for k in 曜日の時間の語),
     ("年休を取った日", "日付"),
 )
 単位 = dict(月の語)
 時間の語 = ("総労働", "所定内", "法定内残業", "法定外残業", "60 時間超", "深夜", "法定休日", "所定休日", "遅刻早退")
 分ける語 = ("所定内", "法定内残業", "法定外残業", "60 時間超")  # 週・制度の判定で変わる語
-
-曜日 = "月火水木金土日"  # date.weekday() の順
 
 
 class 形の誤り(ValueError):

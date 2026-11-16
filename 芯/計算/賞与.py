@@ -17,7 +17,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import ROUND_FLOOR, Decimal
 
-from .形 import 形の誤り, 数, 理由
+from .形 import 区分だけか, 形の誤り, 数, 理由
 from .支給控除 import 一人, 式が無い, 月額表の税額, 社保の項目
 
 社保の計 = 社保の項目 + ("雇用保険",)
@@ -37,11 +37,12 @@ class 賞与の一人(一人):
         self.支給日, self.額, self.原本, self.前月, self.前の標準 = 支給日, 額, 原本, 前月, 前の標準
         self.計算期間 = 計算期間
         self.法の線の行 = []
+        self.按分する = False   # 二以上事業所勤務でも賞与に月の按分の割合は掛けない（この事業所の賞与の額で標準賞与額を決める）
 
     def 計算(self):
         v = self.v
         self.期間 = (self.支給日, self.支給日)
-        if v.get("人.区分") == "委託":
+        if 区分だけか(v, "委託"):
             raise 式が無い("人.区分＝委託 の報酬の式（源泉.報酬）はこの芯にまだ無い")
         a = 数(self.額, "賞与の額")
         if a is None or a < 0 or a != a.to_integral_value():

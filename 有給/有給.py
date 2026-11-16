@@ -6,6 +6,7 @@
 """
 import datetime as dt
 import json
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -16,10 +17,16 @@ if str(根) not in sys.path:
     sys.path.insert(0, str(根))
 
 from 芯.計算 import 引く口  # noqa: E402  (法の表を引く口は 1 つ)
+from 芯.計算.形 import 区分を読む  # noqa: E402
 
 表の名 = "有給_付与日数"  # 法の表/有給_付与日数.json（基準＝労働した日・付与日で引く）
-除く区分 = {"役員", "委託"}
 週の分の上限 = 168 * 60  # 1 週は 168 時間。超える 時間.週の所定 は分で渡したとみて通さない（殻の ×60 が残った時の守り）
+
+
+def _有給の外か(区分) -> bool:
+    """役員を含む区分（役員＋委託の併用 も＝雇用の分が無い）と委託だけの人は有給の外。委託の併用は雇用分があるので入る。"""
+    部 = 区分を読む(区分) or frozenset()
+    return "役員" in 部 or 部 == frozenset({"委託"})
 
 
 def 法の表(基準の日=None, 置き場=None) -> dict:
@@ -57,9 +64,13 @@ def 時効の日(付与日: dt.date, 年: int) -> dt.date:
 # ---- 法の日数 ----
 
 def _時間を分に(x) -> Decimal | None:
-    """時間の数（`40`・`29.5`・`"30"`）→ 分（Decimal）。None は None。読めない・負は None。分に直すのは有給.py の中だけ。"""
+    """時間の数（`40`・`29.5`・`"30"`）か h:mm（`38:31`＝段の解決が割り切れない週の所定を字のまま渡す）→ 分（Decimal）。
+    None は None。読めない・負は None。分に直すのは有給.py の中だけ。"""
     if x is None or isinstance(x, bool):
         return None
+    m = re.fullmatch(r"(\d+):([0-5]\d)", str(x).strip())
+    if m:
+        return Decimal(int(m.group(1)) * 60 + int(m.group(2)))
     try:
         h = Decimal(str(x).strip())
     except Exception:
@@ -291,7 +302,7 @@ def 管理表(入力: dict, 置き場=None) -> dict:
     表 = 法の表(基準, 置き場)
     行たち, 問いたち = [], []
     for p in 入力.get("人", []):
-        if p.get("人.区分") in 除く区分:
+        if _有給の外か(p.get("人.区分")):
             continue
         退職 = 日(p.get("退職日"))
         if 退職 and 退職 < 基準:

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -93,6 +94,38 @@ def 見出しの違い(シート: str, タブ名: str, 今の見出し: list[str
     if not out:
         out.append("列の並びが型と違う")
     return out
+
+
+# ── 質問と回答の 問いの番号（作る所・読む所の 1 か所） ─────────────────
+# 正本は 型.json の 質問と回答「問いの番号」の意味＝`Q<支給年月>-<2 桁の順>`（例 Q202612-01）。
+# 前の形の番号（ある事務所の前の道具の形）は読まない＝今の形へ書き直すのは事務所の前の形の読み替え（寄せる道具.md・入れてよい物.md §1）。
+_問いの番号の形 = re.compile(r"Q(\d{4})(\d{2})-(\d+)")
+
+
+def _年月(支給月: str) -> tuple[str, str]:
+    m = re.match(r"\s*(\d{4})[.\-/]?(\d{1,2})", str(支給月 or ""))
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        raise ValueError(f"支給月 {支給月!r} から年月が読めない（YYYY.MM支給）")
+    return m.group(1), f"{int(m.group(2)):02d}"
+
+
+def 問いの番号(支給月: str, 順: int) -> str:
+    """支給月（`YYYY.MM支給`・`YYYY.MM`・`YYYY-MM`）と順 → 問いの番号 `QYYYYMM-NN`（型の形）。"""
+    年, 月 = _年月(支給月)
+    return f"Q{年}{月}-{int(順):02d}"
+
+
+def 問いの番号を読む(字) -> tuple[str, int] | None:
+    """問いの番号の字 → (`YYYY.MM`, 順)。型の形 `Q202612-01` だけを読む。読めなければ None。"""
+    m = _問いの番号の形.fullmatch(str(字 or "").strip())
+    return (f"{m.group(1)}.{m.group(2)}", int(m.group(3))) if m else None
+
+
+def 次の問いの番号(行たち, 支給月: str) -> int:
+    """質問と回答の行（既にある行）のうち同じ支給年月の問いの番号の一番大きい順＋1（無ければ 1）。"""
+    年, 月 = _年月(支給月)
+    順たち = [x[1] for r in 行たち or () if (x := 問いの番号を読む((r or {}).get("問いの番号"))) and x[0] == f"{年}.{月}"]
+    return max(順たち, default=0) + 1
 
 
 if __name__ == "__main__":
