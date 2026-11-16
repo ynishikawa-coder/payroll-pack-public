@@ -128,6 +128,74 @@ def 次の問いの番号(行たち, 支給月: str) -> int:
     return max(順たち, default=0) + 1
 
 
+# ── 書き方（台帳・マスタ・出力・管理表へ値を書く時の 1 か所） ─────────────
+# 書く手順の 書き方: 字のまま＝Sheets の valueInputOption=RAW（字を数・日付・時刻・式に読ませない）。
+# 殻の書く口に RAW を選ぶ所が無く、いつも入力扱い（USER_ENTERED）になる時は、`入力扱いでも字のまま` で字の頭に ' を付けて渡す
+# （入力扱いの ' は「字として入れる」の印で、セルの値に残らない＝RAW で書いた時と同じ値になる）。書いた後は `書いた値を照らす` で読み直して照らす。
+字のまま = "RAW"
+入力扱い = "USER_ENTERED"
+
+
+def 入力扱いでも字のまま(格子) -> list[list]:
+    """値の格子（行の並び）→ 入力扱いの書く口で書いても RAW と同じ値になる格子。空でない字の頭に ' を付ける（数〔int・Decimal〕は数のまま）。"""
+    return [[("'" + v) if isinstance(v, str) and v != "" else v for v in 行] for 行 in 格子 or ()]
+
+
+def 入力扱いの手順(手順たち) -> list[dict]:
+    """書く手順（`値を書く`・`行を足す` の 書き方＝RAW）→ 入力扱いの書く口へ当てる手順（値の字の頭に '・書き方＝USER_ENTERED）。
+    ほかの手順（file を移す・タブを足す など）はそのまま。"""
+    out = []
+    for x in 手順たち or ():
+        if isinstance(x, dict) and x.get("書き方") == 字のまま and isinstance(x.get("値"), list):
+            x = {**x, "値": 入力扱いでも字のまま(x["値"]), "書き方": 入力扱い}
+        out.append(x)
+    return out
+
+
+def _同じ数(v, w) -> bool:
+    from decimal import Decimal, InvalidOperation
+    try:
+        return Decimal(str(v)) == Decimal(str(w).replace(",", "").strip())
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def 書いた値を照らす(書いた格子, 読み直した格子) -> list[str]:
+    """書いた値（字のままの格子）と、書いた後に読み直した値（表示の字）の違う所 → ["<行>行<列>列: 書いた「…」・読んだ「…」"]。
+    空でない時は止める（数・日付・時刻に読まれた＝頭の 0 が落ちた・2027/2/3 が日付の数になった など）。字で書いた値は字で、
+    数（int・Decimal）で書いた値は数で比べる（12.50 と 12.5 は同じ・字の "0001" と "1" は違う）。"""
+    def 字(v):
+        if v is None:
+            return ""
+        s = str(v)
+        return s[1:] if s.startswith("'") else s
+    違う = []
+    読 = [list(r) for r in 読み直した格子 or ()]
+    for i, 行 in enumerate(書いた格子 or ()):
+        for j, v in enumerate(行):
+            w = 読[i][j] if i < len(読) and j < len(読[i]) else ""
+            if not isinstance(v, str) and v is not None and _同じ数(v, w):   # 数で書いた値は数で比べる（12.50 と 12.5）
+                continue
+            if 字(v).strip() != 字(w).strip():
+                違う.append(f"{i + 1}行{j + 1}列: 書いた「{字(v)}」・読んだ「{字(w)}」")
+    return 違う
+
+
+# ── 質問と回答の 回答（読む所の 1 か所。設問の照らしと入口の文脈が使う） ─────────────
+def 答えの芯(回答) -> str:
+    """回答 の字（確認ページの 貼り戻し の形「答え ／ 補足: … ／ 受付: …（版 …）」）→ 答えの語だけ。"""
+    芯 = re.split(r" ／ (?:補足|受付):", str(回答 or ""))[0].strip()
+    return "" if 芯.startswith(("補足:", "受付:")) else 芯   # ひとことだけの答え＝まだ答えの無い問いと同じ
+
+
+def 今の問いの行たち(行たち) -> list[dict]:
+    """問いの番号ごとに一番下の行だけ（確認ページを送り直した答えは新しい行で足す＝下の行が正）。行たち は dict の並び。"""
+    今: dict = {}
+    for q in 行たち or ():
+        今[(str(q.get("会社", "")).strip(), str(q.get("問いの番号", "")).strip())] = q
+    return list(今.values())
+
+
 if __name__ == "__main__":
     何 = sys.argv[1] if len(sys.argv) > 1 else "見出し"
     out = 全部の見出し() if 何 == "見出し" else 全部の_md_の見出し()

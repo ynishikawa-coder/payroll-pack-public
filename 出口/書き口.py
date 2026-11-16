@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .名と版 import 出す名, 名を付ける, 旧版
-from .形 import 給与ソフトの形, 欄, 字にする, 対応にする, 形を組む, _数の字
+from .形 import 給与ソフトの形, 字にする, 欄の組たち, 形を組む, _数の字
 from .行 import 行, 賞与か, 支給月を確かめる
 from .関所 import 関所を通った, 通ったかを確かめる
 
@@ -41,10 +41,11 @@ class 出す物:
         w.writerows(self.表)
         return buf.getvalue().encode(self.文字コード)
 
-    def 書く手順(self) -> list[dict]:
+    def 書く手順(self, 書き方: str = "RAW") -> list[dict]:
         """渡し方＝表 の物を、その月の `03_出力/` の下のスプレッドシートへ書く手順（殻が順に当てるだけ・判断しない）。
         パス は その月の `03_出力/` からの相対。前の版は同じフォルダの `旧版/` へ移し（名と版）、新しい版を作って値を書く。
-        `書き方`＝`RAW`（値を字のまま書く＝NO `0001` の頭の 0・時間の字 `127.30` を数や日付に読ませない。管理表・寄せ と同じ）。"""
+        `書き方`＝`RAW`（値を字のまま書く＝NO `0001` の頭の 0・時間の字 `127.30` を数や日付に読ませない。管理表・寄せ と同じ）。
+        殻の書く口が RAW を選べない（入力扱いだけ）なら `書き方="USER_ENTERED"`＝値の字の頭に '（`初期設定/型の口.入力扱いの手順`）。"""
         if self.渡し方 != "表":
             raise ValueError(f"{self.物}: 渡し方が {self.渡し方}（表に書かない＝csvの中身 で file を作る）")
         d = self.名.フォルダ
@@ -53,7 +54,25 @@ class 出す物:
         手順.append({"する": "スプレッドシートを作る", "フォルダ": d, "名": self.名.名, "タブ": self.物})
         手順.append({"する": "値を書く", "ファイル": f"{d}/{self.名.名}", "タブ": self.物,
                    "範囲": f"A1:{_列の字(幅)}{len(self.表)}", "値": [list(r) for r in self.表], "書き方": "RAW"})
-        return 手順
+        if 書き方 == "RAW":
+            return 手順
+        if 書き方 != "USER_ENTERED":
+            raise ValueError(f"{self.物}: 書き方「{書き方}」は RAW・USER_ENTERED の外")
+        return _型の口().入力扱いの手順(手順)
+
+
+def _型の口():
+    """書き方の 1 か所（初期設定/型の口.py）。"""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    名 = "出口_型の口"
+    if 名 not in sys.modules:
+        spec = importlib.util.spec_from_file_location(名, Path(__file__).resolve().parent.parent / "初期設定" / "型の口.py")
+        m = importlib.util.module_from_spec(spec)
+        sys.modules[名] = m
+        spec.loader.exec_module(m)
+    return sys.modules[名]
 
 
 def _列の字(n: int) -> str:
@@ -81,22 +100,22 @@ def 取り込み(通った: 関所を通った, 会社: str, 支給月: str, 欄
           時間の書き方: str | None = None, 氏名: dict | None = None,
           委託の人=(), 委託も取り込む: bool = False,
           今ある名=(), 旧版にある名=()) -> 出す物:
-    """給与ソフトへ渡す取り込みの表。1 人 1 行・欄は 対応の渡す欄 の並び。
+    """給与ソフトへ渡す取り込みの表。1 人 1 行・欄は 対応の渡す欄 の並び（1 つの欄に幾つかの項目を当てた欄は、その人に在る項目を足す）。
 
     氏名: 殻が渡す NO→氏名（形に氏名の欄がある時だけ使う。repo には置かない）。
     委託の人: 業務委託の人の NO（マスタの人.区分から殻が渡す）。委託も取り込む が False なら載せない。
     """
     形 = 形を組む(形)  # 殻が渡した形（dict でもよい）。名・鍵の欄・文字コードが無ければ止まる
-    対応 = [x for x in 対応にする(欄の対応) if x.渡す]
+    対応 = [g for g in 欄の組たち(欄の対応) if g.渡す]
     人 = _その月の人(通った, 会社, 支給月)
     委託 = {str(x) for x in 委託の人}
     頭 = [形.鍵の欄]
     if 形.氏名の欄:
         頭.append(形.氏名の欄)
-    頭 += [x.欄 for x in 対応] + list(形.後ろの欄)
+    頭 += [g.欄 for g in 対応] + list(形.後ろの欄)
     表 = [tuple(頭)]
     空 = []
-    渡す項目 = {x.項目 for x in 対応}
+    渡す項目 = {k for g in 対応 for k in g.項目たち}
     載せない = []
     for no in sorted(人, key=_NOの並び):
         if no in 委託 and not 委託も取り込む:
@@ -105,13 +124,13 @@ def 取り込み(通った: 関所を通った, 会社: str, 支給月: str, 欄
         row = [no]
         if 形.氏名の欄:
             row.append(str((氏名 or {}).get(no, "")))
-        for x in 対応:
-            r = vals.get(x.項目)
-            if r is None:
+        for g in 対応:
+            ある = [vals[k].値 for k in g.項目たち if k in vals]
+            if not ある:   # 足す欄はその人に在る項目だけを足す（時給の人は時給・月給の人は基本給）。どれも無ければ空
                 row.append("")
-                空.append(f"{no} {x.欄}")
+                空.append(f"{no} {g.欄}")
             else:
-                row.append(字にする(r.値, x.形, 時間の書き方))
+                row.append(字にする(sum(ある, Decimal(0)), g.形, 時間の書き方))
         row += [""] * len(形.後ろの欄)
         表.append(tuple(row))
         for k in vals:

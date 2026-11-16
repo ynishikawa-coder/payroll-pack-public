@@ -10,7 +10,7 @@ import csv
 import io
 from dataclasses import dataclass
 
-from .形 import 給与ソフトの形, 字を数に, 対応にする, 形を組む
+from .形 import 給与ソフトの形, 字を数に, 欄の組たち, 形を組む
 from .行 import 確定, 行, 支給月を確かめる
 
 
@@ -39,7 +39,7 @@ def 読む(中身: bytes | str, file名: str, 会社: str, 支給月: str, 欄�
     頭 = [c.strip() for c in 表[0]]
     if 形.鍵の欄 not in 頭:
         raise ValueError(f"{file名}: 鍵の欄「{形.鍵の欄}」が無い（見出し: {'・'.join(頭)}）")
-    対応 = {x.欄: x for x in 対応にする(欄の対応) if x.受ける}
+    対応 = {g.欄: g for g in 欄の組たち(欄の対応) if g.受ける}   # 足す欄は項目を ＋ で並べた名の 1 行で読む（分けられない）
     知る = {形.鍵の欄, 形.氏名の欄, *形.後ろの欄} - {None}
     for c in 頭:
         if c and c not in 対応 and c not in 知る:

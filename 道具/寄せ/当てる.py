@@ -193,6 +193,59 @@ def 数える(シート: dict) -> int:
                for r in rows[1:] for v in r if not 空か(v))
 
 
+# 落ちた値の網: 部品の行の決まりのタブ（支給控除の項目＝条件・課税・率 などを行ごとに持つ）で、同じ鍵で残った行の同じ名の列の値が
+# 寄せで空になったら止める（列・行の名が変わらない所だけ見る）。その行に既に問い（寄せられない物）か人の答え（空にする など）が在れば重ねない。
+# 行ごと外す道（額の出所・芯が作る項目・直しの持たない）は 記.持たない と人の答えで数える＝ここは「行が残ったのに値だけ消えた」所。
+# ほかのタブは値を別の所へ移す直し（打刻の丸め → 委託.実働の丸め など）があり、移した先を照らす口が別に在る
+落ちた値を見るタブ = ("支給控除の項目",)
+行の鍵の列 = ("会社", "NO", "項目", "型の名", "支給月", "適用開始")
+
+
+def 落ちた値を照らす(前, o, 記) -> None:
+    問いの所 = [x["鍵"] for x in 記.寄せられない]                    # 問うている行（この回は書かない）
+
+    def 名の所(k, 名) -> bool:   # 鍵の中の 項目=<名> か /<名>（区切りまで）＝「手当」が「皆勤手当」に当たらない
+        return re.search(rf"(?:^|[/=]){re.escape(名)}(?:$|/)", k) is not None
+    答えた所 = [k for k, v in (o.人の答え or {}).items() if v]          # 人が答えた所（その列を 空にする など）
+    for f, tabs in o.シート.items():
+        for t, rows in tabs.items():
+            元 = 前.シート.get(f, {}).get(t)
+            if not rows or not 元 or t not in 落ちた値を見るタブ:
+                continue
+            鍵の番 = [(c, 列の番号(rows, c), 列の番号(元, c)) for c in 行の鍵の列]
+            鍵の番 = [(c, i, j) for c, i, j in 鍵の番 if i is not None and j is not None]
+            if not 鍵の番:
+                continue
+
+            def 鍵たち(rs, k):
+                d: dict = {}
+                for r in rs[1:]:
+                    key = tuple(str(r[x[k]] if x[k] < len(r) else "").strip() for x in 鍵の番)
+                    d.setdefault(key, []).append(r)
+                return {key: v[0] for key, v in d.items() if len(v) == 1 and any(key)}
+            後, 前の行 = 鍵たち(rows, 1), 鍵たち(元, 2)
+            for c in rows[0]:
+                i, j = 列の番号(rows, c), 列の番号(元, c)
+                if j is None or c in 行の鍵の列:
+                    continue
+                for key, r0 in 前の行.items():
+                    r1 = 後.get(key)
+                    v0 = str(r0[j] if j < len(r0) else "").strip()
+                    if r1 is None or 空か(v0) or not 空か(str(r1[i] if i < len(r1) else "")):
+                        continue
+                    行名 = "/".join(f"{x[0]}={v}" for x, v in zip(鍵の番, key) if v)
+                    名 = dict(zip((x[0] for x in 鍵の番), key)).get("項目", "")
+                    if 名 and (any(k.startswith(f"{f}/{t}/") and 名の所(k, 名) for k in 問いの所)
+                              or any(k.startswith(f"{f}/{t}/") and 名の所(k, 名) and c in k for k in 答えた所)):
+                        continue
+                    鍵 = f"{f}/{t}/落ちた値/{c}/{行名}"
+                    ans = o.人の答え.get(鍵, "")
+                    if ans.startswith("持たない:") and ans[len("持たない:"):].strip():
+                        continue
+                    記.出せない(鍵, "落ちた値", f"{f}/{t}", f"{行名}: 列「{c}」の値「{v0}」が寄せで空になった（値 1 個）",
+                              ["持たない:<なぜ>"], "寄せの直し・読み替えが値を落とした。要らない値なら 持たない:<なぜ>（前の値は寄せの写しに在る）")
+
+
 class 記録:
     def __init__(self):
         self.寄せられない = []
@@ -1705,13 +1758,16 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     import 実働の丸め
     実働の丸め.当てる(o, 記, 前)
 
+    落ちた値を照らす(前, o, 記)
     n前, n後 = 数える(前.シート), 数える(o.シート)
     c = 記.数
     出た = sum(int(re.search(r"値 (\d+) 個", x["中身"]).group(1)) for x in 記.寄せられない if re.search(r"値 (\d+) 個", x["中身"]) and x["種類"] in ("行き先の無い列", "行き先の無いタブ", 型の外のシート))
+    # 落ちた値（寄せの後に無い値）は後の値の数に入らない＝寄せられない物に出た数へ足すだけ（後へ移った から引かない）
+    落ちた = sum(1 for x in 記.寄せられない if x["種類"] == "落ちた値")
     捨てた = c["捨てた（直しの持たない）"] + c["捨てた（人の答え）"]
     移った = n後 - c["足した"] - 出た + c["重ねた"] + c["md へ移した"] + c["他の所へ移した"]
-    保ち = {"前の空でない値": n前, "後へ移った": 移った, "寄せられない物に出た": 出た, "捨てた": 捨てた,
-           "内訳": dict(c), "合う": n前 == 移った + 出た + 捨てた}
+    保ち = {"前の空でない値": n前, "後へ移った": 移った, "寄せられない物に出た": 出た + 落ちた, "捨てた": 捨てた,
+           "内訳": dict(c), "合う": n前 == 移った + 出た + 落ちた + 捨てた}
     if not 保ち["合う"]:
         raise 保ちの誤り(f"値の保ちが合わない: {保ち}")
 
