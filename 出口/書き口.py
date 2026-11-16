@@ -4,7 +4,8 @@
 - 取り込み: 給与ソフトの形 × 欄の対応（渡す欄）で 1 人 1 行の表を作る。支給月が `-賞与` なら賞与の取り込み。
 - 支給控除一覧: 雇用（縦）・業務委託（縦）を 1 本ずつ。業務委託の縦の表はここの 1 本だけ。
   事務所の給与ソフトが委託分も取り込む時だけ、同じ行から取り込みにも委託の人を載せる（手で写す 2 本目は無い）。
-- 名は出口が付ける（名と版.py）。中身は表（行の並び）で返し、取り込みは CSV の bytes にもできる。
+- 名は出口が付ける（名と版.py）。中身は表（行の並び）で返す。取り込みは給与ソフトの形の 渡し方 で、CSV なら bytes にでき、
+  表なら 03_出力 のスプレッドシートへ書く手順（`書く手順`）を返す（支給控除一覧はいつも表）。出口は Drive を開かない＝殻が当てる。
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import io
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from .名と版 import 出す名, 名を付ける
+from .名と版 import 出す名, 名を付ける, 旧版
 from .形 import 給与ソフトの形, 欄, 字にする, 対応にする, 形を組む, _数の字
 from .行 import 行, 賞与か, 支給月を確かめる
 from .関所 import 関所を通った, 通ったかを確かめる
@@ -28,14 +29,39 @@ class 出す物:
     区切り: str = ","
     空の欄: tuple[str, ...] = ()          # 「NO 欄」の値が芯に無かった所（推して埋めない・空で書いた）
     載せなかった項目: tuple[str, ...] = ()  # 芯の行にあるが対応に渡す欄が無い項目
+    渡し方: str = "表"                     # 表＝スプレッドシートに書く（書く手順）・CSV＝file（csvの中身）
 
     def csvの中身(self) -> bytes:
+        if self.渡し方 != "CSV":
+            raise ValueError(f"{self.物}: 渡し方が {self.渡し方}（CSV を作らない＝書く手順 で表に書く）")
         if not self.文字コード:
             raise ValueError(f"{self.物}: 文字コードが無い")
         buf = io.StringIO(newline="")
         w = csv.writer(buf, delimiter=self.区切り, lineterminator="\r\n")
         w.writerows(self.表)
         return buf.getvalue().encode(self.文字コード)
+
+    def 書く手順(self) -> list[dict]:
+        """渡し方＝表 の物を、その月の `03_出力/` の下のスプレッドシートへ書く手順（殻が順に当てるだけ・判断しない）。
+        パス は その月の `03_出力/` からの相対。前の版は同じフォルダの `旧版/` へ移し（名と版）、新しい版を作って値を書く。
+        `書き方`＝`RAW`（値を字のまま書く＝NO `0001` の頭の 0・時間の字 `127.30` を数や日付に読ませない。管理表・寄せ と同じ）。"""
+        if self.渡し方 != "表":
+            raise ValueError(f"{self.物}: 渡し方が {self.渡し方}（表に書かない＝csvの中身 で file を作る）")
+        d = self.名.フォルダ
+        手順 = [{"する": "file を移す", "前": f"{d}/{n}", "後": f"{d}/{旧版}/{n}"} for n in self.名.旧版へ移す]
+        幅 = max((len(r) for r in self.表), default=0)
+        手順.append({"する": "スプレッドシートを作る", "フォルダ": d, "名": self.名.名, "タブ": self.物})
+        手順.append({"する": "値を書く", "ファイル": f"{d}/{self.名.名}", "タブ": self.物,
+                   "範囲": f"A1:{_列の字(幅)}{len(self.表)}", "値": [list(r) for r in self.表], "書き方": "RAW"})
+        return 手順
+
+
+def _列の字(n: int) -> str:
+    s = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s or "A"
 
 
 def _NOの並び(no: str):
@@ -93,7 +119,8 @@ def 取り込み(通った: 関所を通った, 会社: str, 支給月: str, 欄
                 載せない.append(k)
     物 = "賞与の取り込み" if 賞与か(支給月) else "取り込み"
     return 出す物(物=物, 名=名を付ける(物, 会社, 支給月, 今ある名, 旧版にある名), 表=tuple(表),
-               文字コード=形.文字コード, 区切り=形.区切り, 空の欄=tuple(空), 載せなかった項目=tuple(載せない))
+               文字コード=形.文字コード, 区切り=形.区切り, 空の欄=tuple(空), 載せなかった項目=tuple(載せない),
+               渡し方=形.渡し方)
 
 
 def 支給控除一覧(通った: 関所を通った, 会社: str, 支給月: str, 項目の並び=(), 項目の形: dict | None = None,

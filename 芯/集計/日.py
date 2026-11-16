@@ -46,6 +46,7 @@ class 日の結果:
     仮たち: list = field(default_factory=list)
     知らせ: list = field(default_factory=list)
     印: dict = field(default_factory=dict)   # 項目 → [印]
+    片: list = field(default_factory=list)   # 法定休日の外の労働の (暦の区分, 分) を時刻の順に（所定休日のうち法定外を数える）
 
     def 印す(self, 項目: str, 文: str):
         self.印.setdefault(項目, []).append(文)
@@ -53,6 +54,20 @@ class 日の結果:
     @property
     def 法定外でない(self) -> int:
         return self.所定内 + self.法定内
+
+    @property
+    def 所定休日の法定外(self) -> int:
+        """所定休日の時間のうち法定外に入った分（内数）。その日の法定外は時刻の後ろの分（日の線・週の線を超えて後に働いた分）とみなし、
+        後ろの片から法定外の分だけ取ってそのうち所定休日の暦の分を足す（1 日まるごと所定休日の日は min(所定休日, 法定外) と同じ）。"""
+        残, x = self.法定外, 0
+        for 区分, m in reversed(self.片):
+            if 残 <= 0:
+                break
+            t = min(m, 残)
+            残 -= t
+            if 区分 == "所定":
+                x += t
+        return min(x, self.所定休日, self.法定外)
 
 
 def 制度の値(決: 決まり, 型: str | None) -> tuple[str, list]:
@@ -317,6 +332,7 @@ def 日を数える(行: dict, 区間たち: list[dict], 決: 決まり, 線: �
     r.労働 = 正味
     r.法定休日 = sum(m for k, m in 片 if k == "法定")
     r.所定休日 = sum(m for k, m in 片 if k == "所定")
+    r.片 = [(k, m) for k, m in 片 if k != "法定" and m]
     r.総 = sum(m for k, m in 片 if k != "法定")
 
     # 34 条の休憩の長さ（足りなければ知らせ。賃金は実働で払う）
