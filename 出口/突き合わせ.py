@@ -7,10 +7,10 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from .形 import 対応にする
+from .形 import 欄の組たち
 from .行 import 行, 賞与か, 支給月の並び
 from .関所 import 関所を通った, 通ったかを確かめる
 
@@ -90,10 +90,19 @@ def 突き合わせる(通った: 関所を通った, 給与ソフトの行, 欄
     給与ソフトに結果が無いのが正しい人なので照らさず、`照らさなかった人` に返す。"""
     通った = 通ったかを確かめる(通った)
     渡さない = {str(x) for x in 渡さなかった人}
-    受ける = {x.項目: x for x in 対応にする(欄の対応) if x.受ける}
+    受ける = {g.項目: g for g in 欄の組たち(欄の対応) if g.受ける}   # 足す欄の項目は ＋ で並べた名（読み口と同じ）
+    組の名 = {k: g.項目 for g in 受ける.values() for k in g.項目たち}
     外した = 通った.外した人の鍵()
-    こちら = {r.鍵: r for r in 通った.行たち if r.項目 in 受ける and r.NO not in 渡さない}
-    照らさない = list(dict.fromkeys(r.項目 for r in 通った.行たち if r.項目 not in 受ける and r.NO not in 渡さない))
+    こちら: dict = {}
+    for r in 通った.行たち:   # 足す欄はその人に在る項目を足した 1 行で照らす（給与ソフトの欄は分けられない）
+        if r.項目 not in 組の名 or r.NO in 渡さない:
+            continue
+        名 = 組の名[r.項目]
+        k = (*r.人, 名)
+        a = こちら.get(k)
+        こちら[k] = replace(r, 項目=名) if a is None else replace(a, 値=a.値 + r.値, 出所="・".join(
+            dict.fromkeys(x for x in (*a.出所.split("・"), r.出所) if x)))
+    照らさない = list(dict.fromkeys(r.項目 for r in 通った.行たち if r.項目 not in 組の名 and r.NO not in 渡さない))
     相手_行たち = getattr(給与ソフトの行, "行たち", 給与ソフトの行)
     相手 = {}
     要確認 = []

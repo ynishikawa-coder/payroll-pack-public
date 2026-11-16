@@ -21,7 +21,8 @@ from .行 import 数にする
 
 @dataclass(frozen=True)
 class 欄:
-    """1 項目 ↔ 1 欄。渡す＝取り込みに書く。受ける＝給与ソフトの出力から読む（突き合わせる）。"""
+    """1 項目 → 1 欄。渡す＝取り込みに書く。受ける＝給与ソフトの出力から読む（突き合わせる）。
+    1 つの欄に幾つかの項目を当ててよい（足す。例 時給・日給・基本給 → 基本給の欄）＝`欄の組たち` が欄ごとにまとめる。"""
     項目: str
     欄: str
     形: str = "円"
@@ -35,23 +36,111 @@ class 欄:
             raise ValueError(f"欄「{self.欄}」は渡すも受けるも無い")
 
 
+@dataclass(frozen=True)
+class 欄の組:
+    """給与ソフトの 1 つの欄と、そこへ足す項目たち（1 つなら今までの 1 項目 1 欄）。"""
+    欄: str
+    形: str
+    渡す: bool
+    受ける: bool
+    項目たち: tuple[str, ...]
+
+    @property
+    def 項目(self) -> str:
+        """読み口・突き合わせが使う項目の名（足す欄は項目を ＋ で並べた名）。"""
+        return "＋".join(self.項目たち)
+
+
 def 対応にする(rows) -> tuple[欄, ...]:
-    """マスタ「項目」の給与ソフトの欄（殻が渡す dict の並び）を対応にする。1 項目に 1 欄・1 欄に 1 項目。"""
+    """欄の対応（殻が渡す dict の並びか `欄の対応を組む` の結果）を対応にする。
+
+    1 項目に 1 欄（同じ項目が 2 つの欄に出ると止まる）。1 つの欄に幾つかの項目を当てると、書く時に足す（読む時は足した値と照らす）。
+    同じ欄に当てた項目は 形・渡す・受ける がそろう（そろわなければ止まる）。1 行の 項目 に並び（list）を渡してもよい。"""
     out = []
     for d in rows:
         if isinstance(d, 欄):
             out.append(d)
             continue
-        out.append(欄(項目=str(d["項目"]), 欄=str(d["欄"]), 形=str(d.get("形") or "円"),
-                     渡す=_はい(d.get("渡す", True)), 受ける=_はい(d.get("受ける", True))))
-    for 名 in ("項目", "欄"):
-        seen = set()
-        for x in out:
-            v = getattr(x, 名)
-            if v in seen:
-                raise ValueError(f"対応に同じ{名}が 2 つ: {v}")
-            seen.add(v)
+        項目たち = d["項目"] if isinstance(d["項目"], (list, tuple)) else [d["項目"]]
+        for 名 in (str(x).strip() for x in 項目たち):
+            if 名:
+                out.append(欄(項目=名, 欄=str(d["欄"]), 形=str(d.get("形") or "円"),
+                             渡す=_はい(d.get("渡す", True)), 受ける=_はい(d.get("受ける", True))))
+    seen: dict[str, str] = {}
+    for x in out:
+        if x.項目 in seen:
+            raise ValueError(f"対応に同じ項目が 2 つ: {x.項目}（欄「{seen[x.項目]}」と「{x.欄}」）")
+        seen[x.項目] = x.欄
+    欄たち_(out)
     return tuple(out)
+
+
+def 欄たち_(対応) -> tuple[欄の組, ...]:
+    組: dict[str, list[欄]] = {}
+    for x in 対応:
+        組.setdefault(x.欄, []).append(x)
+    out = []
+    for 名, xs in 組.items():
+        if len({(x.形, x.渡す, x.受ける) for x in xs}) > 1:
+            raise ValueError(f"欄「{名}」に足す項目（{'・'.join(x.項目 for x in xs)}）の 形・渡す・受ける がそろわない")
+        out.append(欄の組(欄=名, 形=xs[0].形, 渡す=xs[0].渡す, 受ける=xs[0].受ける, 項目たち=tuple(x.項目 for x in xs)))
+    return tuple(out)
+
+
+def 欄の組たち(欄の対応) -> tuple[欄の組, ...]:
+    """欄の対応 → 欄ごとの組（欄の並びは対応に初めて出た順）。書き口・読み口・突き合わせが同じこの 1 つを使う。"""
+    return 欄たち_(対応にする(欄の対応))
+
+
+# ---- 欄の対応を事務所の Drive の値から組む ----
+# 置き場（docs/設計/Drive の型.md §4「製品ごとの値の置き場」）:
+#   03_マスタ ④支給控除の項目 の「給与ソフトの欄」（会社の行の項目・形は円・渡す／受ける）と
+#   03_マスタ ⑥つなぎ の会社の行（NO 空・側＝出口・道具＝事務所が付けた給与ソフトの呼び名・その道具での名＝欄の字）。
+#   その道具での番号は `欄.<項目>`（渡す・受ける）・`渡す.<項目>`（書くだけ）・`受ける.<項目>`（読んで照らすだけ）。
+#   ⑥つなぎ には芯が作る項目（時間外手当・総支給額 など）と勤怠の欄（出勤日数・法定外残業 など＝形は芯/集計 の単位）を置く。
+つなぎの印 = {"欄.": (True, True), "渡す.": (True, False), "受ける.": (False, True)}
+
+
+def _月の字(v) -> str:
+    import re
+    m = re.match(r"\s*(\d{4})\D?(\d{1,2})", str(v or ""))
+    return f"{m.group(1)}.{int(m.group(2)):02d}" if m else ""
+
+
+def 欄の対応を組む(会社: str, 道具: str | None = None, 支給控除の項目=(), つなぎ=(), 支給月: str | None = None) -> list[dict]:
+    """事務所の Drive の値（殻が読んだ行の dict の並び）→ 欄の対応の行。殻が手で対応を組まない（どの殻も同じ物）。
+
+    支給控除の項目: その会社の行の「給与ソフトの欄」が空でない行（適用開始が 支給月 より後の行は使わない・同じ項目は新しい行）。
+    つなぎ: その会社の行（NO 空・側＝出口・道具＝<道具>）。道具を渡さなければ つなぎ は読まない。
+    同じ項目が 2 つの欄に出たら止まる（対応にする）。同じ欄に幾つかの項目なら足す。"""
+    from 芯.集計.形 import 出す語
+    単位 = {k: v for k, v in 出す語 if v in 値の形たち}
+    月 = _月の字(支給月) if 支給月 else ""
+    新しい: dict[str, tuple[str, dict]] = {}
+    for r in 支給控除の項目 or ():
+        if str(r.get("会社", "")).strip() != str(会社) or not str(r.get("給与ソフトの欄") or "").strip():
+            continue
+        始め = _月の字(r.get("適用開始"))
+        if 月 and 始め and 始め > 月:
+            continue
+        名 = str(r.get("項目", "")).strip()
+        if 名 not in 新しい or 始め >= 新しい[名][0]:
+            新しい[名] = (始め, r)
+    out = [{"項目": 名, "欄": str(r["給与ソフトの欄"]).strip(), "形": "円"} for 名, (_, r) in 新しい.items()]
+    for t in つなぎ or () if 道具 else ():
+        番 = str(t.get("その道具での番号", "") or "").strip()
+        if (str(t.get("会社", "")).strip() != str(会社) or t.get("側") != "出口" or str(t.get("NO", "") or "").strip()
+                or str(t.get("道具", "")).strip() != str(道具).strip()):
+            continue
+        印 = next((k for k in つなぎの印 if 番.startswith(k)), None)
+        欄名 = str(t.get("その道具での名", "") or "").strip()
+        if not 印 or not 欄名:
+            continue
+        名 = 番[len(印):].strip()
+        渡す, 受ける = つなぎの印[印]
+        out.append({"項目": 名, "欄": 欄名, "形": 単位.get(名, "円"), "渡す": 渡す, "受ける": 受ける})
+    対応にする(out)   # 同じ項目が 2 つの欄・足す欄の形がそろわない を今止める
+    return out
 
 
 def _はい(v) -> bool:
