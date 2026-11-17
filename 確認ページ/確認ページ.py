@@ -40,15 +40,22 @@ from 芯.計算 import 暦  # noqa: E402  (締めた期間の式を 1 か所に)
 用たち = ("立ち上げ", "毎月")
 宛先たち = ("send", "copy", "artifact")   # 送る＝配る口へ／写す＝貼り戻しの字／確認のページ（Artifact）
 形たち = ("choose", "mismatch", "fact", "judge")
-まとまりたち = ("rule", "person", "once")   # 会社の決まり → 人ごとの事実 → 今回だけの事（この順に並べる）
+まとまりたち = ("rule", "person", "once", "later")   # 会社の決まり → 人ごとの事実 → 今回だけの事 → 先に決めておきたい事（この順・later はいつも最後）
 # 問いの 2 種類（オーナーの決定 2026-11-16・正本は docs/設計/設問の作り方.md §2）。1 枚の中で前半＝会社の決まり・後半＝原本。
 # 会社の決まり＝まとまり rule・原本＝person と once（並びは qa-html の rule → person → once のまま 2 部に分かれる）
 種類たち = ("会社の決まり", "原本")
-_種類のまとまり = {"会社の決まり": ("rule",), "原本": ("person", "once")}
+_種類のまとまり = {"会社の決まり": ("rule", "later"), "原本": ("person", "once", "later")}
+# まだ起きていない場面の問い（今月の原本で当たる人がいない決まり）の 何について の「いつ」（初期設定/設問.py の 後でのいつ と同じ字）
+後でのいつ = "当たる人が出た時"
+# 根拠の列（初期設定/設問.py の 根拠の列 と同じ・質問と回答「質問」の列・型の版 16）
+# 見込み（見当）を見せてよい拠り所（初期設定/設問.py の _見込みでない拠り所 と同じ）
+_見込みでない拠り所 = re.compile(r"^(?:|無し|既定|法の線.*|知らせ.*|原本と連絡から読んだ)$")
+_道具の都合の字 = re.compile(r"文字の種類|文字コード|エンコード|番号の付け方|採番|置き場|フォルダ|ファイルの名|ファイル名|列の並び|CSV の形|CSVの形|シートの形")
+_前の問いの字 = re.compile(r"前の問い|上の問い|前の答え|ほかの問いの答え|別の問いの答え")
 # 会社の決まりの反映先（初期設定/設問.py の _決まりの先 と同じ）
 _決まりの先 = re.compile(r"^(?:03_マスタ/(?:会社|勤務の型|支給控除の項目)(?:/|$)|給与のルール\.md)")
-見当のとおり = "見当のとおり"
-推奨の印 = "（推奨）"
+見当のとおり = "見当のとおり"   # 前の版の行の語（読めば「見込みのとおり」・見込みの別枠が無ければ赤）
+推奨の印 = "（推奨）"   # 前の版の行の印（読めば外す・付いていれば検査が赤＝おすすめの印は出さない）
 # qa-html/2 の答えの形と、フォームの項目の名（型の約束）
 答えの形 = "qa-html/2"
 自由記入 = "__自由記入__"
@@ -97,12 +104,15 @@ _決まりの先 = re.compile(r"^(?:03_マスタ/(?:会社|勤務の型|支給�
 既定の内部の言葉 = ("立ち上げ", "照合", "逆算", "道具", "部品", "質問と回答", "03_マスタ", "04_台帳", "01_ルール", ".md")
 # header と受付の既定の字（殻が事務所の設定から渡せば勝つ）
 既定の色 = "#0f6e66"
+# qa-html の check.mjs の limits（evidence・where_chars・quote_chars・reading_line_chars・estimate_chars・basis_chars）と同じ数
+根拠の上限 = {"数": 3, "場所": 60, "原文": 80, "読みの行": 80, "見込み": 40, "拠り所": 60}
 既定の答えるまでの扱い = "答えが届くまで、この点は確定せずにお待ちします。"
 既定のまとまりの1行 = {"rule": "前半・会社の決まり: 資料で決めきれない所と法律と違う所です",
                    "person": "後半・原本の確かめ: 人ごとの事で資料に書いていなかった所です",
-                   "once": "今回だけの事を確かめます"}
+                   "once": "今回だけの事を確かめます",
+                   "later": "今月の計算には関係しません。起きた時の決め方を先に伺います。"}   # later は qa-html の決まった文（check.mjs の later_lead）
 既定の後半の頭 = "後半・原本の確かめ: "   # 後半（原本）の最初のまとまりの 1 行の頭（person が無く once から始まる時）
-既定のまとまりの見出し = {"person": "原本・人ごとの事", "once": "原本・今回だけの事"}   # data-glabel（毎月の once は「原本・M 月分だけの事」）
+既定のまとまりの見出し = {"person": "原本・人ごとの事", "once": "原本・今回だけの事", "later": "先に決めておきたい事"}   # data-glabel（毎月の once は「原本・M 月分だけの事」）
 既定の宛名 = "ご担当者様"
 # 型から外した欄（2026-11-14 オーナー決定・qa-html の型が宛先で変えるのは宛名と会社の色だけ）
 外した欄 = ("差出人", "連絡先")
@@ -241,9 +251,7 @@ def _分かっている事(行: dict) -> list[str]:
     探した = _字の並び(行.get("探した資料"), r"[、,\n]")
     if 探した:
         行たち.append(f"{'、'.join(探した)} に書いてありません。")
-    if str(行.get("見当", "")).strip():
-        行たち.append(f"今の見込みは「{行['見当']}」です。")
-    return 行たち
+    return 行たち   # 見込みは見つけた事に書かない（拠り所のある時だけ選択肢の後の別枠）
 
 
 def _資料の名たち(行: dict) -> list[str]:
@@ -277,6 +285,51 @@ def _くわしく(行: dict) -> list[str]:
     return _字の並び(行.get("くわしく"), r"\n")
 
 
+def 読点で分ける(字) -> list[str]:
+    """「、」で並べた字を分ける（「…」の中の 、 では分けない）。初期設定/設問.py の 読点で分ける と同じ。"""
+    out, 今, 深さ = [], "", 0
+    for c in str(字 or ""):
+        深さ += (c == "「") - (c == "」")
+        if c == "、" and 深さ <= 0:
+            out.append(今)
+            今 = ""
+        else:
+            今 += c
+    out.append(今)
+    return [x.strip() for x in out if x.strip()]
+
+
+def _根拠(行: dict) -> list[dict]:
+    """根拠（`場所`＝「資料の名：場所「原文」」を、で並べた字・型の版 16）→ [{資料, 場所, 原文}]。資料か場所の欠けた物は数えない。"""
+    out = []
+    for x in 読点で分ける(行.get("場所")):
+        資料, _, 残り = x.partition("：")
+        m = re.fullmatch(r"(.*?)「(.*)」", 残り.strip())
+        場所, 原文 = ((m.group(1), m.group(2)) if m else (残り, ""))
+        if 資料.strip() and 場所.strip():
+            out.append({"資料": 資料.strip(), "場所": 場所.strip(), "原文": 原文.strip()})
+    return out
+
+
+def _リンクの表(行: dict) -> dict:
+    """`資料のリンク`（資料の Drive の URL を、で並べる・資料・探した資料 と同じ順・無い物は「（リンク無し: 訳）」）→
+    {資料の名: {url, no_url}}。"""
+    out = {}
+    for 名, v in zip(_資料の名たち(行), 読点で分ける(行.get("資料のリンク"))):
+        m = re.fullmatch(r"（リンク無し(?:[:：]\s*(.*))?）", v.strip())
+        out[名] = {"url": "", "no_url": (m.group(1) or "").strip() or "訳なし"} if m else {"url": v.strip(), "no_url": ""}
+    return out
+
+
+def _見込み(行: dict) -> dict | None:
+    """見込みの別枠 {値, 拠り所}。見当があり、拠り所が見込みの拠り所（資料・過去の結果など）の時だけ。計算の置き値
+    （既定・法の線・知らせ・無し）は見込みでない＝出さない（2026-11-17 オーナー: 根拠の無い見込みを前提にさせない）。"""
+    値, 拠り所 = str(行.get("見当") or "").strip(), str(行.get("見当の拠り所") or "").strip()
+    if not 値 or _見込みでない拠り所.match(拠り所):
+        return None
+    return {"値": 値, "拠り所": 拠り所}
+
+
 def _問いの箱(行: dict) -> str:
     何 = str(行.get("何が無いか", "")).strip()
     if 何 == その月だけの物 or 何.startswith(その月だけの物 + ":"):
@@ -296,6 +349,8 @@ def _まとまり(行: dict) -> str:
     （会社・勤務の型・事務所に置ける＝rule・人だけ＝person）で、項目でない物（原本の名など）は once・何が無いか が空は rule。"""
     if 行.get("まとまり"):
         return str(行["まとまり"])
+    if 後でのいつ in _字の並び(行.get("対象")):
+        return "later"   # まだ起きていない場面の問い＝先に決めておきたい事（いつも最後）
     箱 = _問いの箱(行)
     if 箱 == その月だけの物:
         return "once"
@@ -326,6 +381,8 @@ def _種類(行: dict) -> str:
     v = str(行.get("種類") or "").strip()
     if v:
         return v
+    if _まとまり(行) == "later":   # まだ起きていない場面の問い＝中身の種類は箱と反映先から（まとまりを外して読む）
+        return _種類({**行, "まとまり": "", "対象": ""})
     return "会社の決まり" if _まとまり(行) == "rule" else "原本"
 
 
@@ -361,7 +418,7 @@ def _選択肢(行: dict) -> list[dict]:
     for o in 元:
         if isinstance(o, dict):
             語 = str(o.get("見出し", "")).strip()
-            推奨, 見出し, 変わる = bool(o.get("推奨")), 語, str(o.get("変わる事", "")).strip()
+            推奨, 見出し, 変わる = bool(o.get("推奨")), 語, str(o.get("変わる事", "")).strip()   # 推奨は検査が赤にするだけ（出さない）
             if m := re.fullmatch(r"(.+?)（(補足に[^）]*)）", 語):
                 見出し = m.group(1)   # 見出しには書かない＝印（data-supp）で欄の名が「この答えでは書いてください」に変わる
         else:
@@ -375,10 +432,9 @@ def _選択肢(行: dict) -> list[dict]:
                 変わる = ("訳を" if "訳" in m.group(2) else "") + "ひとことに書いた事で計算します"
         if not 語 or (形 == "fact" and 語 == 当てはまらない):
             continue   # fact の「当てはまらない」は形の最後に 1 つだけ足す
-        if 語 == 見当のとおり:
-            推奨 = True   # 見当のとおり は推奨（1 つ目でなければ検査が赤）
-            見出し = "今の見込みのとおり"
-            変わる = 変わる or (f"「{見当}」のまま計算します" if 0 < len(見当) <= 24 else "上の今の見込みのまま計算します")
+        if 語 == 見当のとおり:   # 前の版の行の語。おすすめにせず、見込みの別枠を指す見出しにする
+            見出し = "下の灰色の枠のとおり"   # 「見込み」の字は .estimate の枠の外に書かない（qa-html の検査）
+            変わる = 変わる or (f"「{見当}」のまま計算します" if 0 < len(見当) <= 24 else "下の灰色の枠のまま計算します")
         変わる = 表.get(語) or 変わる or 変わる事の既定.get(見出し, "")
         out.append({"鍵": "estimate" if 語 == 見当のとおり else _値の鍵(語), "語": 語, "見出し": 見出し,
                     "変わる事": 変わる, "添え書き": "", "推奨": 推奨})
@@ -410,11 +466,11 @@ def _ひとことを頼む(o: dict) -> bool:
 def 問いの検査(行たち: list[dict], 内部の言葉: list[str] | tuple = ()) -> list[str]:
     """qa-html の決まりのうち機械で見られる物。決まり外れを赤の 1 行ずつで返す（空なら緑）。
 
-    1 問 1 行・形が 4 つ・まとまりが 3 つのどれか・選択肢 2 つ以上・推奨は 1 つ目だけ・選択肢に記号を付けない・
+    1 問 1 行・形が 4 つ・まとまりが 4 つのどれか・選択肢 2 つ以上・おすすめの印を付けない・選択肢に記号を付けない・
     記号で選択肢を指さない・内部の言葉を含まない・問いの番号が在って重ならない。
     前提（qa-html の前提の 3 段）: 何について（`対象` 1〜3 つ）・なぜ聞くか（`理由` が 4 つのどれか）・見つけた事（2 行まで）と
     それが指す読んだ資料（`資料` か `探した資料`）・くわしく（3 行まで）・選択肢ごとの変わる事・切り抜き（2 枚まで・写る人は
-    問いの人だけ）。前提が書けない問いは出さない。長さ・1 問に 2 つ・数を書かせる形は配る前に qa-html の check.mjs で見る。"""
+    問いの人だけ）・根拠（場所・実物＝原文か切り抜き・AI の読み）・前の問いに寄りかからない・道具の都合を聞かない。前提が書けない問いは出さない。長さ・1 問に 2 つ・数を書かせる形は配る前に qa-html の check.mjs で見る。"""
     赤 = []
     if not 行たち:
         return ["問いが 1 つも無い"]
@@ -493,18 +549,44 @@ def 問いの検査(行たち: list[dict], 内部の言葉: list[str] | tuple = 
         if 形 in ("choose", "mismatch") and len(字) >= 3 and "どちら" in 問い:
             赤.append(f"{id}: 選択肢が {len(字)} つなのに「どちら」と聞いている（3 つ以上は「どれ」）")
         選 = _選択肢(行)
-        推奨 = [j for j, o in enumerate(選) if o["推奨"]]
-        if len(推奨) > 1:
-            赤.append(f"{id}: 推奨が {len(推奨)} つ（1 つだけ）")
-        if any(j != 0 for j in 推奨):
-            赤.append(f"{id}: 推奨が 1 つ目でない")
-        if any(o["語"] == 見当のとおり for o in 選) and not str(行.get("見当", "")).strip():
-            赤.append(f"{id}: 「{見当のとおり}」があるのに見当が空")
+        if any(o["推奨"] for o in 選):
+            赤.append(f"{id}: 選択肢におすすめの印がある（見込みを前提にさせない・見込みは拠り所のある時だけ 見当・見当の拠り所 の別枠）")
+        if any(o["語"] == 見当のとおり for o in 選) and not _見込み(行):
+            赤.append(f"{id}: 「{見当のとおり}」があるのに見込みの別枠が無い（見当と、見込みの拠り所が要る）")
+        # 根拠（2026-11-17 オーナー: どのファイルのどこをどう読んだから聞くかを、リンクと実物で見せる）
+        根拠 = _根拠(行)
+        if not 根拠:
+            赤.append(f"{id}: 根拠の場所が無い（場所＝「資料の名：PDF はページと欄・シートはタブとセルの範囲」）")
+        elif not (any(e["原文"] for e in 根拠) or 切):
+            赤.append(f"{id}: 根拠の実物が無い（場所の原文の引用か切り抜きが 1 つ以上）")
+        if len(根拠) > 根拠の上限["数"]:
+            赤.append(f"{id}: 根拠が {len(根拠)} つ（{根拠の上限['数']} つまで）")
+        for e in 根拠:
+            if e["資料"] not in _資料の名たち(行):
+                赤.append(f"{id}: 根拠の資料「{e['資料']}」が 資料・探した資料 に無い（読んだ資料の一覧に載らない）")
+            if len(e["場所"]) > 根拠の上限["場所"]:
+                赤.append(f"{id}: 根拠の場所が {len(e['場所'])} 字（{根拠の上限['場所']} 字まで）: {e['場所'][:20]}")
+            if len(e["原文"]) > 根拠の上限["原文"]:
+                赤.append(f"{id}: 根拠の原文の引用が {len(e['原文'])} 字（{根拠の上限['原文']} 字まで・長い原文は 原文 の列へ）")
+        読み = _字の並び(行.get("AIの読み"), r"\n")
+        if not 読み:
+            赤.append(f"{id}: AI の読みが無い（こう読んだ→ここが決まらない を 1〜3 行）")
+        elif len(読み) > 3:
+            赤.append(f"{id}: AI の読みが {len(読み)} 行（3 行まで）")
+        for l in 読み:
+            if len(l) > 根拠の上限["読みの行"]:
+                赤.append(f"{id}: AI の読みの 1 行が {len(l)} 字（{根拠の上限['読みの行']} 字まで）: {l[:20]}")
+        if (見 := _見込み(行)) and (len(見["値"]) > 根拠の上限["見込み"] or len(見["拠り所"]) > 根拠の上限["拠り所"]):
+            赤.append(f"{id}: 見込みの別枠が長い（見当 {根拠の上限['見込み']} 字・見当の拠り所 {根拠の上限['拠り所']} 字まで）")
+        if _道具の都合の字.search(問い):
+            赤.append(f"{id}: 道具・システムの都合を担当者に聞いている（オーナーに聞く）")
         for o in 選:
             if 記号の頭.match(o["見出し"]):
                 赤.append(f"{id}: 選択肢に記号を付けない（中身の見出しで書く）: {o['見出し'][:20]}")
             if o["鍵"] not in ("other", "none") and not o["変わる事"]:
                 赤.append(f"{id}: 選択肢「{o['見出し'][:20]}」にこの答えで変わる事が無い（変わる事 に 誰の・何が・いくら）")
+        if any(_前の問いの字.search(x) for x in [問い, *分かる, *くわ]):
+            赤.append(f"{id}: 前の問いの答えに寄りかかっている（要る事をこの問いの中に書く）")
         for s in [問い, *分かる]:
             if m := 記号で指す.search(s):
                 赤.append(f"{id}: 記号「{m.group(0)}」で選択肢を指している（中身の言葉で書く）")
@@ -545,23 +627,54 @@ def _読んだ資料(入力: dict, 行たち: list[dict]) -> tuple[list[dict], l
         if isinstance(d, dict):
             名 = str(d.get("名", "")).strip()
             添え = "・".join(str(d[k]).strip() for k in ("期間", "受け取った日") if str(d.get(k) or "").strip())
-            資料.append({"名": 名, "字": 名 + (f"（{添え}）" if 添え else "")})
+            資料.append({"名": 名, "字": 名 + (f"（{添え}）" if 添え else ""),
+                       "url": str(d.get("url") or "").strip(), "no_url": str(d.get("no_url") or "").strip()})
         elif str(d).strip():
-            資料.append({"名": str(d).strip(), "字": str(d).strip()})
+            資料.append({"名": str(d).strip(), "字": str(d).strip(), "url": "", "no_url": ""})
     ある = {d["名"] for d in 資料}
     for 行 in 行たち:
         for 名 in _資料の名たち(行):
             if 名 not in ある:
-                資料.append({"名": 名, "字": 名})
+                資料.append({"名": 名, "字": 名, "url": "", "no_url": ""})
                 ある.add(名)
                 知らせ.append(f"読んだ資料に「{名}」が無かったので一覧に足した（読んだ資料 に期間・受け取った日を付けて渡す）")
+    # 資料のリンク: 読んだ資料の url が無ければ行の `資料のリンク` の列から（質問と回答を読み直した行）
+    for d in 資料:
+        if not (d["url"] or d["no_url"]):
+            for 行 in 行たち:
+                x = _リンクの表(行).get(d["名"])
+                if x:
+                    d["url"], d["no_url"] = x["url"], x["no_url"]
+                    break
     for i, d in enumerate(資料, 1):
         d["鍵"] = f"d{i}"
     return 資料, 知らせ
 
 
+def _リンクの検査(資料: list[dict], 行たち: list[dict]) -> list[str]:
+    """問いが指す資料（資料・探した資料・根拠）のリンク: どれも url（https の Drive などの URL）か no_url（無い訳）を持つ。"""
+    指す = {n for 行 in 行たち for n in [*_資料の名たち(行), *(e["資料"] for e in _根拠(行))]}
+    赤 = []
+    for d in 資料:
+        if d["名"] in 指す and not d["url"] and not d["no_url"]:
+            赤.append(f"読んだ資料「{d['名']}」にリンクが無い（url か、無い訳の no_url を渡す）")
+        elif d["url"] and not re.fullmatch(r"https://[^\s\"'<>]+", d["url"]):
+            赤.append(f"読んだ資料「{d['名']}」のリンク {d['url'][:40]!r} が https の URL でない")
+    return 赤
+
+
+def _資料の字(d: dict) -> str:
+    """読んだ資料の一覧の 1 行 `li[data-doc][data-url]`（qa-html の型・リンクは li の中の同じ URL の <a href>。別のタブで
+    開くのは型の JS）。リンクが無い資料は data-url="" と data-no-url="訳"（「リンクなし: 訳」は型の CSS が出す）。"""
+    if d.get("url"):
+        u = escape(d["url"], True)
+        return f'<li data-doc="{d["鍵"]}" data-url="{u}"><a href="{u}">{escape(d["字"])}</a></li>'
+    return f'<li data-doc="{d["鍵"]}" data-url="" data-no-url="{escape(d.get("no_url") or "", True)}">{escape(d["字"])}</li>'
+
+
+
 def _選択肢の行(鍵: str, o: dict, 最初: bool) -> str:
-    印 = '<span class="tag-rec">おすすめ</span>' if o["推奨"] else ""
+    印 = ""   # おすすめの印は出さない（2026-11-17 オーナー: 見込みを前提にさせない）
     小 = (f'<small class="chg">{escape(o["変わる事"])}</small>' if o["変わる事"] else "") + \
         (f"<small>{escape(o['添え書き'])}</small>" if o["添え書き"] else "")
     req = " required" if 最初 else ""
@@ -595,6 +708,13 @@ def _箱(行: dict, glabel: str | None, glead: str | None, 資料の鍵: dict) -
         切.append(f'<figure class="clip" data-doc="{資料の鍵.get(str(c.get("資料", "")).strip(), "")}" data-shows="{escape(写る, True)}">'
                  f'<img src="{escape(str(c["画像"]), True)}" alt="{escape(str(c.get("写っている事", "")), True)}">'
                  f'<figcaption>{escape(str(c.get("場所", "")))}</figcaption></figure>')
+    根 = []   # qa-html の型: li[data-doc][data-where]＝<b>資料名</b>・場所＋原文の引用 .quote（括弧は型が付ける）
+    for e in _根拠(行):
+        根.append(f'<li data-doc="{資料の鍵.get(e["資料"], "")}" data-where="{escape(e["場所"], True)}">'
+                 f'<b>{escape(e["資料"])}</b>・{escape(e["場所"])}'
+                 + (f'<span class="quote">{escape(e["原文"])}</span>' if e["原文"] else "") + "</li>")
+    読み = "<br>".join(escape(x) for x in _字の並び(行.get("AIの読み"), r"\n"))
+    見込み = _見込み(行)
     原文 = str(行.get("原文", "")).strip()
     くわ = "<br>".join(escape(x) for x in _くわしく(行)) + (f'<div class="orig">{escape(原文)}</div>' if 原文 else "")
     return "\n".join(x for x in [
@@ -603,7 +723,9 @@ def _箱(行: dict, glabel: str | None, glead: str | None, 資料の鍵: dict) -
         '<p class="about">' + "".join(f'<span class="who">{escape(x)}</span>' if x in 人 else f"<span>{escape(x)}</span>" for x in 札) + "</p>",
         f"<legend>{escape(問い)}</legend>",
         f'<p class="why" data-why="{理由}">{理由の文[理由]}</p>',
+        f'<p class="reading">{読み}</p>' if 読み else "",   # 頭の「AI の読み: 」は型の CSS が付ける
         f'<div class="known" data-docs="{docs}">{"<br>".join(escape(x) for x in 分かる)}{表の字}</div>',
+        f'<ul class="evidence">{"".join(根)}</ul>' if 根 else "",
         f'<div class="clips">{"".join(切)}</div>' if 切 else "",
         f'<details class="more"><summary>くわしく</summary>{くわ}</details>',
         '<div class="opts">',
@@ -611,6 +733,8 @@ def _箱(行: dict, glabel: str | None, glead: str | None, 資料の鍵: dict) -
         '<p class="or">または</p>',
         f'<label class="opt"><input type="radio" name="{鍵}" value="{分からない}"><span><b>{分からないの字}</b></span></label>',
         "</div>",
+        # 頭の「AI の今の見込み: 」と後ろの「（根拠: …）。見込みに合わせず、事実で選んでください。」は型の CSS が付ける
+        (f'<p class="estimate" data-basis="{escape(見込み["拠り所"], True)}">{escape(見込み["値"])}</p>') if 見込み else "",
         f'<div class="supp"><label for="supp_{鍵}">ひとこと（なくても大丈夫です）</label>'
         f'<textarea id="supp_{鍵}" name="supp_{鍵}" rows="2"></textarea></div>',
         "</fieldset>",
@@ -645,6 +769,7 @@ def 作る(入力: dict) -> dict:
     版 = 次の版(組, 支給月, 入力.get("今ある名", []), 支給の月)
     版の = 版の字(支給月, 版["版"], 支給の月)
     赤 = 問いの検査(行たち, 入力.get("内部の言葉", ()))
+    赤 += _リンクの検査(_読んだ資料(入力, 行たち)[0], 行たち)
     # 同じ月の次の版（配り直し）は前の版がその月だけの物の問いを持っている＝最初の版にだけ当てる
     if 用 == "毎月" and 版["版"] == 1 and not any(_問いの箱(行) == その月だけの物 for 行 in 行たち):
         赤.append(f"毎月の確認ページに「{その月だけの物}」の問いが無い（初期設定/設問.py の その月だけの物の問い で起こして足す）")
@@ -664,7 +789,8 @@ def 作る(入力: dict) -> dict:
     glabels = {**既定のまとまりの見出し, **({"once": f"原本・{月} 月分だけの事"} if 月 else {})}
     渡した1行 = {str(k): str(v) for k, v in (入力.get("まとまりの1行") or {}).items()}
     gleads = {"rule": 既定のまとまりの1行["rule"], "person": 既定のまとまりの1行["person"],
-              "once": f"{月} 月分だけの事を確かめます" if 月 else 既定のまとまりの1行["once"]}
+              "once": f"{月} 月分だけの事を確かめます" if 月 else 既定のまとまりの1行["once"],
+              "later": 既定のまとまりの1行["later"]}
     # 1 枚の中で前半＝会社の決まり（rule）・後半＝原本（person → once）。並びは qa-html の rule → person → once のまま
     並び = sorted(行たち, key=lambda r: まとまりたち.index(_まとまり(r)))
     # 1 枚の問いの上限（qa-html の 12 問）を超えたら、並びのまま枚に分ける。分けた枚は同じ版の 1 枚目・2 枚目
@@ -711,8 +837,9 @@ def _一枚の_html(入力: dict, 題: str, 前書き: str, 宛先: str, 色: st
         f"  <h1>{escape(題)}</h1>",
         f'  <p class="lead">{escape(前書き)}</p>',
         '  <div class="docs"><h2>読んだ資料（この中から聞いています）</h2>',
-        "  <ul>" + "".join(f'<li data-doc="{d["鍵"]}">{escape(d["字"])}</li>' for d in 資料) + "</ul>",
-        "  <p>ほかに新しい資料がある時は、最後の「ほかに伝えたい事」で教えてください。</p></div>",
+        "  <ul>" + "".join(_資料の字(d) for d in 資料) + "</ul>",
+        "  <p>リンクは新しいタブで開きます。開けない時も、各問いに資料の切り抜きか原文を載せています。"
+        "ほかに新しい資料がある時は、最後の「ほかに伝えたい事」で教えてください。</p></div>",
         f'  <p class="hold">{escape(str(入力.get("答えるまでの扱い") or "").strip() or 既定の答えるまでの扱い)}</p>',
         f'  <div class="box">{escape(f"{期限} までにお願いします。" if 期限 else 既定の期限の字)}</div>',
         "</header>",

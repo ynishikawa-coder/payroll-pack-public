@@ -30,6 +30,16 @@ _spec = _imp.spec_from_file_location("初期設定_型の口_寄せ", _Path(__fi
 型の口 = _imp.module_from_spec(_spec)
 _spec.loader.exec_module(型の口)
 
+
+def _台帳の形():
+    """台帳の写しの列（氏名・曜日・出勤退勤・休憩と労働の合計）を作る 1 か所（月次/台帳の形.py）を借りる。"""
+    if not hasattr(_台帳の形, "m"):
+        sp = _imp.spec_from_file_location("月次_台帳の形_寄せ", _Path(__file__).resolve().parents[2] / "月次" / "台帳の形.py")
+        m = _imp.module_from_spec(sp)
+        sp.loader.exec_module(m)
+        _台帳の形.m = m
+    return _台帳の形.m
+
 旧の頭 = "旧_"
 
 
@@ -365,6 +375,27 @@ def ファイルたち(o: 物, pattern: str) -> list[str]:
 
 # ---------------------------------------------------------------- 操作（どれも前の形を確かめ、当たっていれば飛ばす）
 
+def _行の辞書(rows) -> list[dict]:
+    return [dict(zip(rows[0], r)) for r in rows[1:]] if rows else []
+
+
+def _写しを埋める(o: 物, f: str, t: str, rows: list, i: int, 名: str, 記: 記録):
+    """列を足す の 値＝{"写し": …}: 足した列の空の欄を、道具が書く写し（氏名はマスタ「社員」から NO で・勤怠の要約は区間から）で埋める。
+    値は台帳の形（月次/台帳の形.py）と同じ作り方。在る値は変えない（空の欄だけ）。"""
+    氏名 = {}
+    for ff in ファイルたち(o, "03_マスタ"):
+        for a in _行の辞書(o.シート[ff].get("社員") or []):
+            if not 空か(a.get("NO")) and not 空か(a.get("氏名")):
+                氏名[str(a["NO"])] = a["氏名"]
+    区間 = _行の辞書(o.シート[f].get("勤怠の区間") or []) if t == "勤怠" else []
+    写し = _台帳の形().写しの値(t, _行の辞書(rows), 氏名, 区間)
+    for r, w in zip(rows[1:], 写し):
+        v = w.get(名, "")
+        if 空か(r[i]) and not 空か(v) and any(not 空か(x) for x in r):
+            r[i] = v
+            記.数["足した"] += 1
+
+
 def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 手がかり: dict):
     する = op["する"]
     所 = f"直し {版} の操作 {番}「{する}」"
@@ -477,9 +508,12 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
                 head[-1] = 名
                 i = len(head) - 1
                 記.当てた.append((版, 番, する, f"{where}/{名}"))
-            elif not 条件:
+            elif not 条件 and not (isinstance(op["値"], dict) and "写し" in op["値"]):
                 continue
             値 = op["値"]
+            if isinstance(値, dict) and "写し" in 値:  # 写しは在る列の空の欄も埋める（前の版で空で足した列）
+                _写しを埋める(o, f, t, rows, i, 名, 記)
+                continue
             if 値 == "<会社>":
                 値 = o.会社
             elif isinstance(値, dict):

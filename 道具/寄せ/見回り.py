@@ -10,6 +10,8 @@ import re
 
 import 当てる
 
+月の置き場の名 = re.compile(r"(\d{4})\.(\d{2})支給（(\d{1,2})月分）")
+
 
 def 配る(会社たち: list[dict], 型: dict, 直したち: list[dict], 今日: dt.date | None = None) -> dict:
     今の版 = 当てる.型を読む(型)["版"]
@@ -122,10 +124,45 @@ def 見回り(会社たち: list[dict], 直したち: list[dict], 今の版: int
     # 「残す」と答えた行は新しい期限まで並べない
     残す = {k: v for k, v in 前の答え.items() if str(v).startswith("残す:")}
     行たち = [x for x in 行たち if not (x["鍵"] in 残す and dt.date.fromisoformat(残す[x["鍵"]][3:].strip()) > 今日)]
+    ずれ = [x for c in 会社たち for x in 書き方を見る(c)]
     前の版のまま = [{"会社": c["会社"], "型の版": int(c.get("型の版", 0) or 0)} for c in 会社たち if int(c.get("型の版", 0) or 0) < 今の版]
     消せる = 消してよい直し([int(c.get("型の版", 0) or 0) for c in 会社たち], 直したち)
-    return {"消す問い": 行たち, "前の版のままの会社": 前の版のまま, "消してよい直し": 消せる,
-            "人が見る物": 消す問いの一枚(行たち, 前の版のまま, 消せる)}
+    人が見る物 = 消す問いの一枚(行たち, 前の版のまま, 消せる)
+    if ずれ:
+        人が見る物 += "\n\n" + 書き方のずれの一枚(ずれ)
+    return {"消す問い": 行たち, "前の版のままの会社": 前の版のまま, "消してよい直し": 消せる, "書き方のずれ": ずれ,
+            "赤": bool(ずれ), "人が見る物": 人が見る物}
+
+
+def 書き方を見る(会社: dict) -> list[dict]:
+    """型の書き方（支給月 YYYY.MM支給・日付 YYYY-MM-DD・時刻 h:mm・月の置き場の名 YYYY.MM支給（M月分））からずれた値（赤で知らせる・直さない）。
+
+    照らす書き方は台帳を書く口（月次/台帳の形.py の 書き方のずれ）と同じ 1 か所。直すのは人か寄せ（値を黙って書き換えない）。"""
+    形 = 当てる._台帳の形()
+    out = []
+    for f, tabs in (会社.get("シート") or {}).items():
+        if not (f.startswith("03_マスタ") or f.startswith("04_台帳")):
+            continue
+        for t, rows in tabs.items():
+            if not rows:
+                continue
+            h = [str(x) for x in rows[0]]
+            for n, r in enumerate(rows[1:], 2):
+                for x in 形.書き方のずれ(t, h, ["" if v is None else str(v) for v in r]):
+                    out.append({"会社": 会社["会社"], "所": f"{f}/{t}/{n}行目", "ずれ": x})
+    for p in 会社.get("置き場", []):
+        部分 = p.rstrip("/").split("/")
+        if len(部分) >= 2 and 部分[0] == "10_月ごと":
+            m = 月の置き場の名.fullmatch(部分[1])
+            if not m or not 1 <= int(m.group(3)) <= 12:
+                out.append({"会社": 会社["会社"], "所": "/".join(部分[:2]), "ずれ": f"月の置き場の名「{部分[1]}」（YYYY.MM支給（M月分））"})
+    return list({(x["所"], x["ずれ"]): x for x in out}.values())
+
+
+def 書き方のずれの一枚(ずれ) -> str:
+    L = ["# 赤: 書き方のずれ（型の列の意味の書き方に合わない値）", "", "| 会社 | 所 | ずれ |", "|---|---|---|"]
+    L += [f"| {x['会社']} | {x['所']} | {x['ずれ']} |" for x in ずれ]
+    return "\n".join(L)
 
 
 def 消す問いの一枚(行たち, 前の版のまま, 消せる) -> str:
