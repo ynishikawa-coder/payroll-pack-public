@@ -143,6 +143,29 @@ def 欄の対応を組む(会社: str, 道具: str | None = None, 支給控除�
     return out
 
 
+# ---- 給与ソフトへ入れない人を事務所の Drive の値から組む ----
+# 置き場（docs/設計/Drive の型.md §4「製品ごとの値の置き場」）は 1 か所:
+#   03_マスタ ⑥つなぎ の人の行（NO＝その人・側＝出口・道具＝事務所が付けた給与ソフトの呼び名・その道具での番号＝`渡さない`）。
+#   その人は計算し支給控除一覧には載るが、その給与ソフトの取り込み・`空の欄`・突き合わせには出さない（例 給与ソフトに載せない代表）。
+渡さない印 = "渡さない"
+
+
+def 渡さない人を組む(会社: str, 道具: str | None, つなぎ=()) -> tuple[str, ...]:
+    """⑥つなぎ の人の行（NO 有り・側＝出口・道具＝<道具>・その道具での番号＝`渡さない`）→ その給与ソフトへ入れない人の NO の並び。
+    道具を渡さなければ読まない（どの給与ソフトか分からない）。殻が手で人を外さない（どの殻も同じ物）。"""
+    if not 道具:
+        return ()
+    out = []
+    for t in つなぎ or ():
+        no = str(t.get("NO", "") or "").strip()
+        if (not no or str(t.get("会社", "")).strip() != str(会社) or t.get("側") != "出口"
+                or str(t.get("道具", "")).strip() != str(道具).strip()):
+            continue
+        if str(t.get("その道具での番号", "") or "").strip() == 渡さない印 and no not in out:
+            out.append(no)
+    return tuple(out)
+
+
 def _はい(v) -> bool:
     if isinstance(v, bool):
         return v
