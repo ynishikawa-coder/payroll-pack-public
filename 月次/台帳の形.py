@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+from datetime import date as _date
 from decimal import Decimal
 from pathlib import Path
 
@@ -97,12 +98,99 @@ def 出勤と退勤(区間たち) -> dict[tuple, tuple[str, str]]:
     return out
 
 
-def _写しを足す(行たち, 写し) -> list[dict]:
-    """入口の行に、人が見るための写しの列（写し(r) の dict）を足す。入口の行に値が在ればそれを残す。"""
+曜日の字 = "月火水木金土日"
+
+
+def 曜日(日付) -> str:
+    """YYYY-MM-DD → 月〜日の 1 字（読めない日付は空）。"""
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", _字(日付).strip())
+    if not m:
+        return ""
+    try:
+        return 曜日の字[_date(int(m.group(1)), int(m.group(2)), int(m.group(3))).weekday()]
+    except ValueError:
+        return ""
+
+
+def 長さの字(分: int | None) -> str:
+    """分 → h:mm（人が読む要約の列だけの書き方。計算に使う列は整数の分のまま）。"""
+    return "" if 分 is None else f"{分 // 60}:{分 % 60:02d}"
+
+
+def _整数(v) -> int:
+    s = _字(v).strip()
+    return int(s) if re.fullmatch(r"\d+", s) else 0
+
+
+def 休憩と労働の合計(区間たち) -> dict[tuple, tuple[int | None, int | None]]:
+    """表 B の行 → {(支給月, 会社, NO, 日付): (休憩の区間の分, 労働の区間から休憩・外出の重なりを引いた分)}。
+
+    人が読む要約（計算は芯が区間と表 A を読む）。終わりの無い区間が在る種別は None（分からない＝黙って短く見せない）。
+    時刻の無い休憩・時刻の無い労働時間（表 A の分の列）は 台帳へ書く形 が足す。"""
+    日: dict[tuple, dict] = {}
+    for b in 区間たち:
+        種 = _字(b.get("区間の種別"))
+        if 種 not in ("労働", "休憩", "外出"):
+            continue
+        d = 日.setdefault(_日の鍵(b), {"労働": [], "休憩": [], "外出": [], "抜け": set()})
+        s, e = _分(b.get("始め")), _分(b.get("終わり"))
+        if s is None or e is None or e < s:
+            d["抜け"].add(種)
+            continue
+        d[種].append((s, e))
+    out = {}
+    for k, d in 日.items():
+        休 = None if "休憩" in d["抜け"] else sum(e - s for s, e in d["休憩"])
+        if d["抜け"] & {"労働", "休憩", "外出"}:
+            労 = None
+        else:
+            働く = set().union(*(range(s, e) for s, e in d["労働"])) if d["労働"] else set()
+            抜く = set().union(*(range(s, e) for s, e in d["休憩"] + d["外出"])) if d["休憩"] or d["外出"] else set()
+            労 = len(働く - 抜く)
+        out[k] = (休, 労)
+    return out
+
+
+def _写しを足す(鍵: str, 行たち, 写し) -> list[dict]:
+    """入口の行に、人が見るための写しの列（写し(r) の dict）を足す。
+
+    行に値が在って道具の値と違えば止める（氏名がマスタと違う・要約が区間と食い違う＝どちらが正か分からない）。
+    道具の値が空の列（区間が無い・社員のタブで引けない）は、行の値を残す。"""
     out = []
     for r in 行たち:
-        足す = {c: v for c, v in 写し(r).items() if not _字(r.get(c)).strip()}
+        足す = {}
+        for c, v in 写し(r).items():
+            前 = _字(r.get(c)).strip()
+            if not 前:
+                足す[c] = v
+            elif v and 前 != v:
+                raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の {c} が「{前}」（道具の値は「{v}」＝"
+                                 f"{'マスタ「社員」の氏名' if c == '氏名' else '区間から作った値'}）。入口の行か区間・マスタを直す")
         out.append({**r, **足す})
+    return out
+
+
+日付の形 = re.compile(r"\d{4}-\d{2}-\d{2}")
+時刻の形 = re.compile(r"\d{1,2}:\d{2}")
+支給月の形 = re.compile(r"\d{4}\.\d{2}支給")
+# 書き方を 1 つに固定する列（型の列の意味の書き方）。台帳へ書く前に照らし、違えば止める
+日付の列 = ("日付", "振替の相手の日", "代休の相手の日")
+時刻の列 = ("出勤の時刻", "退勤の時刻", "所定の始業", "所定の終業", "始め", "終わり", "休憩の合計", "労働の合計")
+
+
+def 書き方のずれ(鍵: str, h: list[str], 行: list[str]) -> list[str]:
+    """型の書き方（支給月 YYYY.MM支給・日付 YYYY-MM-DD・時刻と要約の長さ h:mm）に合わない値（空は見ない）。"""
+    out = []
+    for c, v in zip(h, 行):
+        v = v.strip()
+        if not v:
+            continue
+        if c == "支給月" and not 支給月の形.fullmatch(v):
+            out.append(f"{c}「{v}」（YYYY.MM支給）")
+        elif c in 日付の列 and not 日付の形.fullmatch(v):
+            out.append(f"{c}「{v}」（YYYY-MM-DD）")
+        elif c in 時刻の列 and not 時刻の形.fullmatch(v):
+            out.append(f"{c}「{v}」（h:mm）")
     return out
 
 
@@ -113,7 +201,13 @@ def _表(鍵: str, 行たち) -> list[list[str]]:
         外 = sorted(k for k, v in r.items() if k not in h and not str(k).startswith("_") and _字(v).strip())
         if 外:
             raise 台帳の形の誤り(f"{鍵}: 型の列に無い値 {外}（型を直すか、入口の行を型の列へ）")
-        out.append([支給月の字(r.get(c)) if c == "支給月" else _字(r.get(c)) for c in h])
+        行 = [支給月の字(r.get(c)) if c == "支給月" else _字(r.get(c)) for c in h]
+        ずれ = 書き方のずれ(鍵, h, 行)
+        if ずれ:
+            raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の書き方が型と違う {ずれ}")
+        if "要確認の理由" in h and _字(r.get("読み取りの確かめ")).strip() == "要確認" and not _字(r.get("要確認の理由")).strip():
+            raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} は 要確認 なのに 要確認の理由 が空（入口が理由を 1 行で書く）")
+        out.append(行)
     return out
 
 
@@ -148,20 +242,54 @@ def 人ごとの表(集計の行, 人の状態=(), 氏名: dict | None = None) -
     return out
 
 
+def _日の写し(r, 名: dict, 出退: dict, 合計: dict) -> dict:
+    """台帳「勤怠」の 1 行の写しの列（氏名・曜日・出勤の時刻・退勤の時刻・休憩の合計・労働の合計）。"""
+    k = _日の鍵(r)
+    出, 退 = 出退.get(k, ("", ""))
+    休, 労 = 合計.get(k, (0, 0))
+    時刻の無い休憩, 時刻の無い労働 = _整数(r.get("時刻の無い休憩")), _整数(r.get("時刻の無い労働時間"))
+    休 = None if 休 is None else 休 + 時刻の無い休憩
+    労 = None if 労 is None else max(0, 労 - 時刻の無い休憩) + 時刻の無い労働
+    区間の無い日 = k not in 合計 and not (時刻の無い休憩 or 時刻の無い労働)
+    return {"氏名": _字(名.get(_字(r.get("NO")), "")), "曜日": 曜日(r.get("日付")), "出勤の時刻": 出, "退勤の時刻": 退,
+            "休憩の合計": "" if 区間の無い日 else 長さの字(休), "労働の合計": "" if 区間の無い日 else 長さの字(労)}
+
+
 def 台帳へ書く形(*, 勤怠=(), 勤怠の区間=(), 月の変動=(), 人ごとの支給控除=(), 集計の行=(), 人の状態=(),
             氏名: dict | None = None) -> dict[str, list[list[str]]]:
     """月次 の 台帳 の返す物: {タブの鍵: 表（1 行目が型の見出し）}。鍵は 勤怠・勤怠の区間・月の変動・人ごと（台帳）と
     人ごとの支給控除（マスタ）。
-    氏名: {NO: 氏名}（社員のタブ）。人ごと・勤怠・勤怠の区間 の 氏名 の列へ。勤怠の 出勤の時刻・退勤の時刻 は 勤怠の区間 から作る。"""
+    氏名: {NO: 氏名}（社員のタブ）。氏名 の列の在る全タブへ（行に違う氏名が在れば止める）。勤怠の 曜日 は日付から、
+    出勤の時刻・退勤の時刻・休憩の合計・労働の合計 は 勤怠の区間 から作る（行に違う値が在れば止める）。"""
     名 = {str(k): v for k, v in (氏名 or {}).items()}
     勤怠の区間 = list(勤怠の区間)
     出退 = 出勤と退勤(勤怠の区間)
+    合計 = 休憩と労働の合計(勤怠の区間)
 
-    def 日の写し(r):
-        出, 退 = 出退.get(_日の鍵(r), ("", ""))
-        return {"氏名": _字(名.get(_字(r.get("NO")), "")), "出勤の時刻": 出, "退勤の時刻": 退}
+    def 人の写し(r):
+        return {"氏名": _字(名.get(_字(r.get("NO")), ""))}
 
-    勤怠 = _写しを足す(勤怠, 日の写し)
-    勤怠の区間 = _写しを足す(勤怠の区間, lambda r: {"氏名": _字(名.get(_字(r.get("NO")), ""))})
+    勤怠 = _写しを足す("勤怠", 勤怠, lambda r: _日の写し(r, 名, 出退, 合計))
+    勤怠の区間 = _写しを足す("勤怠の区間", 勤怠の区間, 人の写し)
+    月の変動 = _写しを足す("月の変動", 月の変動, 人の写し)
+    人ごとの支給控除 = _写しを足す("人ごとの支給控除", 人ごとの支給控除, 人の写し)
     return {"勤怠": _表("勤怠", 勤怠), "勤怠の区間": _表("勤怠の区間", 勤怠の区間), "月の変動": _表("月の変動", 月の変動),
             "人ごと": 人ごとの表(集計の行, 人の状態, 氏名), "人ごとの支給控除": _表("人ごとの支給控除", 人ごとの支給控除)}
+
+
+def 写しの値(タブ: str, 行たち: list[dict], 氏名: dict | None = None, 区間たち=()) -> list[dict]:
+    """既に在るタブの行（寄せの直しが列を足した後）に書く写しの値（行ごとの {列: 値}）。台帳へ書く形 と同じ作り方の 1 か所
+    （寄せは前の月の行も埋めるので、ここは止めずに値だけ返す）。"""
+    名 = {str(k): v for k, v in (氏名 or {}).items()}
+    if タブ != "勤怠":
+        return [{"氏名": _字(名.get(_字(r.get("NO")), ""))} for r in 行たち]
+    return [_日の写し(r, 名, 出勤と退勤(区間たち), 休憩と労働の合計(区間たち)) for r in 行たち]
+
+
+def 氏名を埋める(鍵: str, 行たち, 氏名: dict | None) -> list[dict]:
+    """月次 の返す台帳に無いタブ（台帳「委託」・マスタ「変更の記録」など 殻 が足す行）の 氏名 の列を、殻が書く前に埋める口。
+
+    氏名: {NO: 氏名}（マスタ「社員」）。空の欄だけ埋め、行に違う氏名が在れば止める（台帳へ書く形 と同じ決まり）。
+    NO が空の行（変更の記録の会社の行）・社員のタブで引けない NO は空のまま。"""
+    名 = {str(k): v for k, v in (氏名 or {}).items()}
+    return _写しを足す(鍵, 行たち, lambda r: {"氏名": _字(名.get(_字(r.get("NO")), ""))})
