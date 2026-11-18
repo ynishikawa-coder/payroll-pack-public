@@ -1,0 +1,7 @@
+{
+  "name": "payroll-agent",
+  "description": "給与エージェントの部分。毎月の手順（skill payroll-steps）・守る決まり（決まり.md・起動時に差し込む）・照らし（hooks と bin）。版はパックの版の印と同じ（この file に版を書かない）。事務所の置き場・記録の置き場は開かず、口の一覧（口の一覧.md）の口を呼ぶ。",
+  "author": {
+    "name": "payroll-pack"
+  }
+}

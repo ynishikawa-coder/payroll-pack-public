@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""止める見張り（給与エージェント）の判定 — 出す物の本と管理表の出荷の欄を、出荷の口の外から窓が道具で直に書くのを止める。
+
+なぜ在るか（根治・2026-11-17）: 窓が前の版の本を写して値を差し替え（シートの道具の書き込み）、管理表の今の版を手で書き換えて
+  出せた。出す表を作れるのはパックの出口だけ、置く・管理表へ書くのは各社の出荷の口（窓の道具の外）だけにする。
+  判定はパックのここ 1 か所に置き、両側の窓が同じ見張りで止める（hook の入口は ../hooks/見張り.py）。
+
+止める物（道具の名は接続ごとの頭が付く＝末尾で見る）:
+  1. シートの道具の書き込み（update_values・append_values・batch_clear_values・update_formulas・update_spreadsheet・
+     insert_dimension・copy_sheet_to_another_spreadsheet）で、宛先の本の名が出す物の名の頭（パックの出口が知る物
+     `<物>_`＝取り込み_・賞与の取り込み_・支給控除一覧_…・有給休暇管理表_）で始まる・出荷の口の印がある
+  2. 同じ書き込みで、宛先の名に `管理表` を含み、タブ「月の状況」の 取り込み・納品 の欄に掛かる／止まりの理由 の欄に
+     `今の版` を書く／範囲の無い構造の書き込み
+  3. Drive の道具の create_file・copy_file で名が 1 の頭で始まる物、update_file・copy_file の元が 1 の本
+  4. Bash で、殻が渡した「置き換える命令」（例 `<命令> replace <id>`）の宛先が 1 の本
+  5. 名の照らし: Drive の道具で確認ページ（名の頭 `確認事項_`・前の形 `確認ページ_`）を作る時、名がパックの確認ページの名の形
+     （確認ページ/確認ページ.py の 名の形）でない・置き場（同じ所の 置き場の名）が違う
+宛先の名が引けない時は止める（引けない＝見分けられない）。名を引く口が「見えない」と返した本（出荷の口に見えない本）は通す。
+名を引く・見出しを引く手は殻が渡す（口）。ここは Drive を開かない。Python 3 の標準ライブラリだけ。
+"""
+from __future__ import annotations
+
+import re
+import shlex
+from dataclasses import dataclass, field
+from typing import Callable
+
+シートの書き込み = ("update_values", "append_values", "batch_clear_values", "update_formulas", "update_spreadsheet",
+               "insert_dimension", "copy_sheet_to_another_spreadsheet")
+構造 = ("update_spreadsheet", "batch_clear_values", "insert_dimension")
+Driveの書き込み = ("create_file", "copy_file", "update_file")
+管理表の語 = "管理表"
+管理表のタブ = "月の状況"
+出荷の欄 = ("取り込み", "納品")
+今の版の欄, 今の版の頭 = "止まりの理由", "今の版"
+確認ページの頭たち = ("確認事項_", "下書き_確認事項_", "確認ページ_", "下書き_確認ページ_")   # 今の形と前の形（前の形は名の形に合わない＝止める）
+
+
+@dataclass
+class 口:
+    """外を引く口（殻が渡す・試験は差し替える）。"""
+    名の頭たち: tuple[str, ...]                          # パックの出口が知る物の名の頭（パックの場所.名の頭たち）
+    名を引く: Callable[[str], dict]                      # id → {"name", "appProperties", "見えない"?}。引けない時は例外
+    見出しを引く: Callable[[str, str], list]             # (本の id, タブ) → 1 行目
+    印: str = ""                                          # 出荷の口が置いた本の印（appProperties の鍵・値 "1"）
+    置き換える命令: tuple[str, ...] = ()                   # Bash の `<命令> replace <id>` の命令の名（末尾で見る）
+    確認ページの形: tuple[str, str] | None = None          # (名の正規表現, 置き場の名)。パックに無い版では None
+    引いた: list = field(default_factory=list)
+
+
+def 出す物の本か(m: dict, k: 口) -> bool:
+    名 = str(m.get("name", ""))
+    return any(名.startswith(h) for h in k.名の頭たち) or bool(k.印 and (m.get("appProperties") or {}).get(k.印) == "1")
+
+
+def _列(letters: str) -> int:
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def 範囲を読む(rng: str) -> tuple[str, int | None, int | None]:
+    """'タブ'!B2:D9 → (タブ, 1, 3)。列の無い範囲（2:5・タブだけ）は (タブ, None, None)＝全部の列に掛かる。"""
+    tab, _, cells = rng.partition("!")
+    tab = tab.strip().strip("'")
+    if not cells:
+        return tab, None, None
+    cols = re.findall(r"([A-Za-z]+)\d*", cells)
+    if not cols:
+        return tab, None, None
+    a = _列(cols[0])
+    b = _列(cols[-1]) if len(cols) > 1 else (None if ":" in cells else a)
+    return tab, a, b
+
+
+def 見るか(tool: str) -> bool:
+    short = tool.rsplit("__", 1)[-1]
+    return tool == "Bash" or short in シートの書き込み or short in Driveの書き込み
+
+
+def 判定(tool: str, args: dict, k: 口) -> str | None:
+    """止める訳（止めないなら None）。"""
+    short = tool.rsplit("__", 1)[-1]
+    args = args if isinstance(args, dict) else {}
+    if tool == "Bash":
+        return _bash(str(args.get("command", "")), k)
+    if short in Driveの書き込み:
+        return _drive(short, args, k)
+    if short not in シートの書き込み:
+        return None
+    if short == "copy_sheet_to_another_spreadsheet":
+        sid = args.get("destinationSpreadsheetId") or args.get("destination_spreadsheet_id")
+    else:
+        sid = args.get("spreadsheetId") or args.get("spreadsheet_id")
+    if not sid:
+        return "書く先の本の id が無い＝出す物の本か見分けられない"
+    try:
+        m = k.名を引く(str(sid))
+    except Exception:  # noqa: BLE001
+        return f"書く先の本（{sid}）の名が引けない＝出す物の本か管理表か見分けられない"
+    if 出す物の本か(m, k):
+        return f"出す物の本（{m.get('name')}）へ道具で直に書く"
+    if 管理表の語 not in str(m.get("name", "")):
+        return None
+    if short in 構造:
+        return f"管理表（{m.get('name')}）の形を道具で変える・範囲を消す"
+    rng = str(args.get("range", ""))
+    if "!" not in rng:
+        return f"管理表（{m.get('name')}）へタブの名の無い範囲（{rng or '無い'}）で書く＝出荷の欄に掛かるか見分けられない"
+    tab, a, b = 範囲を読む(rng)
+    if tab != 管理表のタブ:
+        return None
+    try:
+        h = list(k.見出しを引く(str(sid), tab) or [])
+    except Exception:  # noqa: BLE001
+        return f"管理表の {tab} の見出しが引けない＝出荷の欄に掛かるか見分けられない"
+    if not h:
+        return f"管理表の {tab} の見出しが空＝出荷の欄に掛かるか見分けられない"
+    lo = 0 if a is None else a
+    hi = len(h) - 1 if b is None else b
+    if short == "append_values":
+        lo, hi = 0, len(h) - 1
+    hit = [h[i] for i in range(lo, min(hi, len(h) - 1) + 1) if h[i] in 出荷の欄]
+    if hit:
+        return f"管理表の {tab} の出荷の欄（{'・'.join(hit)}）を道具で直に書く"
+    if 今の版の欄 in h:
+        j = h.index(今の版の欄)
+        if lo <= j <= hi:
+            for row in (args.get("values") or []) + (args.get("formulas") or []):
+                i = j - lo
+                if isinstance(row, list) and i < len(row) and 今の版の頭 in str(row[i]):
+                    return f"管理表の {今の版の欄} に「{今の版の頭}」を道具で直に書く"
+    return None
+
+
+def _drive(short: str, args: dict, k: 口) -> str | None:
+    名 = str(args.get("name") or args.get("title") or (args.get("metadata") or {}).get("name") or "")
+    if any(名.startswith(h) for h in k.名の頭たち):
+        return f"Drive の道具で出す物の本（{名}）を作る"
+    if 名.startswith(確認ページの頭たち):
+        外れ = 確認ページの名の外れ(名, args, k)
+        if 外れ:
+            return 外れ
+    src = args.get("fileId") or args.get("sourceFileId") or args.get("file_id")
+    if short in ("copy_file", "update_file") and src:
+        try:
+            m = k.名を引く(str(src))
+        except Exception:  # noqa: BLE001
+            return f"元のファイル（{src}）の名が引けない＝出す物の本か見分けられない"
+        if 出す物の本か(m, k):
+            return f"Drive の道具で出す物の本（{m.get('name')}）を写す・書き換える"
+    return None
+
+
+def 確認ページの名の外れ(名: str, args: dict, k: 口) -> str | None:
+    """名の照らし: 確認ページは `確認事項_<組>_<支給月の名>_v<版>.html` を置き場（8_確認事項）へ。形はパックの 1 か所から渡る。"""
+    if not k.確認ページの形:   # パックの名の形が無い・読めない＝見分けられない＝止める（形を写さない）
+        return f"確認ページの名の形がパック（確認ページ/確認ページ.py の 名の形・置き場の名）から読めない＝{名} が正しい名か見分けられない"
+    形, 置き場 = k.確認ページの形
+    if not re.fullmatch(形, 名):
+        return f"確認ページの名 {名} が名の形（{形}）でない"
+    parents = args.get("parents") or args.get("parentId") or args.get("parent_id") or (args.get("metadata") or {}).get("parents")
+    pid = (parents[0] if isinstance(parents, list) and parents else parents) if parents else None
+    if not pid:
+        return f"確認ページ {名} の置き場が渡されない＝{置き場} か見分けられない"
+    try:
+        pm = k.名を引く(str(pid))
+    except Exception:  # noqa: BLE001
+        return f"確認ページの置き場（{pid}）の名が引けない＝{置き場} か見分けられない"
+    if str(pm.get("name", "")) != 置き場:
+        return f"確認ページ {名} の置き場が {pm.get('name')}（{置き場} へ置く）"
+    return None
+
+
+def _bash(cmd: str, k: 口) -> str | None:
+    if not k.置き換える命令 or "replace" not in cmd:
+        return None
+    try:
+        words = shlex.split(cmd)
+    except ValueError:
+        words = cmd.split()
+    for i, w in enumerate(words):
+        if w == "replace" and i + 1 < len(words) and any(x.endswith(c) for x in words[:i] for c in k.置き換える命令):
+            fid = words[i + 1]
+            try:
+                m = k.名を引く(fid)
+            except Exception:  # noqa: BLE001
+                return f"置き換える先（{fid}）の名が引けない＝出す物の本か見分けられない"
+            if 出す物の本か(m, k):
+                return f"置き換える命令で出す物の本（{m.get('name')}）を置き換える"
+    return None

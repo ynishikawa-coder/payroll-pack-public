@@ -24,7 +24,7 @@ _sp = _imp.spec_from_file_location("初期設定_段の解決_書き方", _Path(
 段 = _imp.module_from_spec(_sp)
 _sp.loader.exec_module(段)
 
-照らすファイルの頭 = ("03_マスタ", "04_台帳")   # 見回り.書き方を見る と同じ
+照らすファイルの頭 = ("2_マスタ", "台帳")   # 見回り.書き方を見る と同じ
 種類 = "書き方の合わない値"
 
 
@@ -78,7 +78,7 @@ def 当てる(o, 記):
         if not f.startswith(照らすファイルの頭):
             continue
         for t, rows in tabs.items():
-            if not rows or t.startswith(当.旧の頭):
+            if not rows or t.startswith(当.旧の頭) or (f, t) in 記.待つタブ:   # 待つタブ＝消す問いへ回したタブ（畳んだタブも）
                 continue
             h = [str(x) for x in rows[0]]
             for i, c in enumerate(h):
