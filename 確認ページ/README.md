@@ -12,6 +12,7 @@
 | file | 中身 |
 |---|---|
 | `確認ページ.py` | 作る・名と版・差し替え・貼り戻し・管理表の行・問いの検査 |
+| `前の答え.py` | 前の答えを照らす口（qa-html の `prior_check_cmd`＝形 qa-prior/1）。標準入力の問いを質問と回答の答え済みと照らし `{answered, checked}` を返す（同じ番号・同じ設定の項目・字の 8 割の重なり。分からない・出し直しは数えない・聞き直しは理由に「聞き直し: Q…」）。表は殻が読んで file に置き、環境 `PAYROLL_QA_ROWS`（会社は `PAYROLL_QA_COMPANY`・パックの dir は `PAYROLL_PACK_DIR`）で渡す。表が無い・読めない・見出しが無い・渡した会社の行が無くほかの会社の行がある時は何も出さず 2 で終わる（check.mjs が赤）。文面の問いは `--questions` で答え済みがあれば 2 |
 | `雛形.html` | qa-html の 1 つの型（土台 docs-kit の skill qa-html の `references/template.html`）を**丸ごと写した物**（今の写しは土台の agent-foundation-public main@03d9b83277d0＝根拠・AI の読み・見込みの枠・資料のリンク・先に決めておきたい事を持つ型）。`qa:css`・`qa:js`・`qa:foot` の間は 1 字も変えない（直す時は qa-html の正本から写し直す）。道具が差すのは header・`__版__`・問いの箱・「この後のこと」・宛先の印・会社の色だけ |
 
 ## 型（qa-html の 1 つの型・答えの形 qa-html/2）
