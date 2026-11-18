@@ -1,7 +1,7 @@
 # 直す人のための決まり
 
 payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sharekeiri-gif〔共同編集者〕）の窓が直し・試し・版を出す repo です。
-枝・PR・レビュー・main へ入れる・版の印の決まりは、土台 [agent-foundation-public](https://github.com/ynishikawa-coder/agent-foundation-public) の CONTRIBUTING.md（読む版は `.github/workflows/tag.yml` の `ref` の 1 か所）に従います。ここには給与のパックだけの違いを書きます。
+枝・PR・レビュー・main へ入れる・版の印の決まりは、土台 [agent-foundation-public](https://github.com/ynishikawa-coder/agent-foundation-public) の CONTRIBUTING.md（読む版は `.github/workflows/土台の版.json` の 1 か所）に従います。ここには給与のパックだけの違いを書きます。
 
 ## 1. 枝と PR
 - 枝・1 枝 = 1 PR = 1 窓・PR の型は土台 §1 のとおり。PR の本文はこの repo の `.github/pull_request_template.md` の型で書く。
@@ -21,13 +21,15 @@ payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sh
   - どちらも無ければその検査は skip になる（落ちない）。語の束を repo に commit しない。
 
 ## 4. 試験
-- 入口は `bash scripts/check_all.sh`（中で `python3 -m pytest -q tests/`）。最後の行が `緑:` なら通り、`赤:` なら落ち。CI（`.github/workflows/ci.yml`）も同じ入口を回す。
-- **試験は小さく置く**。repo に置く試験は次の 3 つだけ:
-  1. 規律・道具の自分の試験（`tests/` の直下。例 `tests/test_骨.py`）
-  2. 作り物の **国の率や表の例**（`tests/作り物/`。法の表を引いた値が合うかの小さな例）
-  3. 作り物の **回帰の見張り**（`tests/作り物/`。直した所の外の結果が変わらないことを見る）
-- 作り物の会社の一揃い（社員・マスタ・勤怠の束）は repo に置かない。会社ごとの確かめは各事務所の Drive の側で行う。
-- **過去の正解に合わせる答え合わせは開発の道具に置き、芯に入れない**（`道具/` か `tests/`。`芯/` の計算は答えを見ない）。
+- 入口は `bash scripts/check_all.sh`（中で `python3 -m pytest -q tests/`）。最後の行が `緑:` なら通り、`赤:` なら落ち。落ちた時は最後の行の手前に `落ちた試験: <名>`・`回した環境: …`・`出力の全部: <file>` が出る（1 回目だけ落ちた時もこの 3 つを連絡に添える）。CI（`.github/workflows/ci.yml`）も同じ入口を回す。
+- 入口の最初の段（`scripts/check_python_version.py`）は、ci.yml の `python-version` と同じ版の python で repo の全部の `.py` を compile し、読めない物があれば `赤:` で止める（手元の版が違っても CI でだけ落ちる文法・名の字を手元で出す）。その版の python が手元に無ければ赤＝`uv python install <版>` などで入れる。その python に pytest が在れば試験も同じ版で回す。
+- **試験は作り物の値だけで小さく置く**。試験は `tests/` に、直す物の dir と同じ名の束で置く（`tests/計算/` は `芯/計算/` の試験・`tests/入口/` は `入口/` の試験…。束の一覧と中身は `tests/README.md`）。置いてよい試験は次の 3 種:
+  1. 規律・道具の自分の試験（`tests/` の直下。例 `tests/test_骨.py`・`tests/test_芯の境.py`）
+  2. 部品ごとの試験（各束。作り物の値で、部品の決まりと、わざと誤りを入れて拒むかを見る。法の表を引いた値の例・回帰の見張りは `tests/作り物/`）
+  3. 答え合わせの道具の試験（`tests/答え合わせ/`。照らしの道具そのものの試験で、芯から呼ばれないことも見る）
+- 作り物の会社の一揃い（社員・マスタ・勤怠の束を丸ごと）は repo に置かない。各試験は要る行だけを作り物で持つ。会社ごとの確かめは各事務所の Drive の側で行う。
+- **過去の正解に合わせる答え合わせは開発の道具に置き、芯に入れない**（`道具/` か `tests/`。`芯/` の計算は答えを見ない）。芯が標準の道具と芯の中の外を import しないことは `tests/test_芯の境.py` が見る。
+- 確認ページの検査（土台の qa-html の `check.mjs`）の試験は、環境に `QA_HTML_CHECK`（check.mjs の path）と node があれば当たる（手元で無ければ skip）。CI は ci.yml が土台の版の印で取って渡し、無ければ赤（`tests/確認ページ/test_確認ページの検査の道具.py`）。
 
 ## 5. 版
 - 版の出し方と印（タグ）は土台の決まりに従い、この repo の版の名と CHANGELOG の形は `docs/版の出し方.md` に書く。

@@ -1,13 +1,18 @@
-"""呼び口（根で `python3 -m 道具.答え合わせ …`）。JSON を受けて JSON を返す。Drive を開かない。
+"""呼び口（根で `python3 -m 道具.答え合わせ …`）。初期設定の照らし（本番の 0 段の手順・確かめと仮.md §1）。
+JSON を受けて JSON を返す。Drive を開かない。
 
   読む   --形 一覧表|明細 --会社 <番号> --支給月 YYYY-MM --つなぎ つなぎ.json [--時間の書き方 60進|時:分|10進]
          [--文字コード cp932] [--氏名からNO 氏名.json] --出す 答え.json <file>...
   照らす --芯 芯.json --答え 答え.json --つなぎ つなぎ.json [--前の記録 記録.json] [--N 3] --出す 差.json
+  出所を見る --変更の記録 記録.json --答え 答え.json [--答えの資料 名...] [--質問と回答 問い.json] [--会社 名] --出す 出所.json
 
 つなぎ.json: {"欄": [{"項目", "欄", "形"}...], "読まない見出し": [...], "鍵の見出し": [...], "氏名の見出し": [...]}（欄の並びだけでもよい）
 芯.json: {"行": [人×項目の行...], "人の状態": [{"支給月", "会社", "NO", "状態"}...]}（行の並びだけでもよい）
 答え.json: 読む の出す物 {"行": [...], "要確認": [...]}
-終わりの値: 読む＝要確認 0 で 0・あれば 1／照らす＝差の行 0 かつ要確認 0 で 0・ほかは 1。
+差.json の 問いの種: 設問.まとめる の種の形（殻がほかの種と 1 枚にまとめ、確認ページ.作る で聞く）。
+記録.json・問い.json: マスタ「変更の記録」・質問と回答 の行（列名の dict の並び）。
+終わりの値: 読む＝要確認 0 で 0・あれば 1／照らす＝差の行 0 かつ要確認 0 で 0・ほかは 1／
+出所を見る＝過去の結果を出所とする値（と出所の無い値）が 0 で 0・あれば 1（毎月へ進まない）。
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import 答えの読み口, 照合の段
+from . import 出所を見る as 出所, 答えの読み口, 照合の段
 from .表 import 表にする
 
 
@@ -69,12 +74,21 @@ def 照らす(a) -> int:
     r = 照合の段.照らす(芯["行"], _答え, _つなぎ(a.つなぎ)["欄"], 人の状態=状態 or None, 前の記録=前, N=a.N)
     _書く(a.出す, r.字の形())
     差 = r.差の行の数
-    print(f"{a.出す}: 照らした {len(r.差の表) - 1} 行・差 {差} 行・問い {len(r.問い)}・要確認 {len(r.要確認)} 件", file=sys.stderr)
+    print(f"{a.出す}: 照らした {len(r.差の表) - 1} 行・差 {差} 行・問いの種 {len(r.問いの種)}・要確認 {len(r.要確認)} 件",
+          file=sys.stderr)
     return 0 if 差 == 0 and not r.要確認 else 1
 
 
+def 出所を見る(a) -> int:
+    資料 = 出所.答えの資料(_読む_json(a.答え)["行"]) | set(a.答えの資料 or ())
+    r = 出所.見る(_読む_json(a.変更の記録), 資料, _読む_json(a.質問と回答) if a.質問と回答 else (), a.会社)
+    _書く(a.出す, r.字の形())
+    print(f"{a.出す}: 見た {r.見た行の数} 行・外れ {len(r.外れ)} 件" + ("（毎月へ進まない）" if r.止める else ""), file=sys.stderr)
+    return 1 if r.止める else 0
+
+
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python3 -m 道具.答え合わせ", description="開発の間だけの答え合わせ")
+    ap = argparse.ArgumentParser(prog="python3 -m 道具.答え合わせ", description="初期設定の照らし（過去の結果と人×項目で照らす本番の 0 段の手順）")
     sub = ap.add_subparsers(dest="口", required=True)
     p = sub.add_parser("読む")
     p.add_argument("--形", choices=("一覧表", "明細"), required=True)
@@ -93,8 +107,15 @@ def main(argv=None) -> int:
     q.add_argument("--前の記録")
     q.add_argument("--N", type=int, default=3)
     q.add_argument("--出す", required=True)
+    o = sub.add_parser("出所を見る")
+    o.add_argument("--変更の記録", required=True)
+    o.add_argument("--答え", required=True)
+    o.add_argument("--答えの資料", nargs="*")
+    o.add_argument("--質問と回答")
+    o.add_argument("--会社")
+    o.add_argument("--出す", required=True)
     a = ap.parse_args(argv)
-    return 読む(a) if a.口 == "読む" else 照らす(a)
+    return {"読む": 読む, "照らす": 照らす, "出所を見る": 出所を見る}[a.口](a)
 
 
 if __name__ == "__main__":

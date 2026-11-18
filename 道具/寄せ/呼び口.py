@@ -5,6 +5,7 @@
   python3 道具/寄せ/呼び口.py 配る   --会社たち a.json b.json … --型 型.json [--今日 …]
   python3 道具/寄せ/呼び口.py 見回り --会社たち a.json … --型 型.json [--窓 <置いた窓の役>] [--前の答え 答え.json] [--今日 …]
   python3 道具/寄せ/呼び口.py 自己検査 --型 型.json [--前の型 前の版の型.json]
+  python3 道具/寄せ/呼び口.py 質問と回答 --表 質問.json --読み替え 読み替え.json [--ファイル 00_事務所/質問と回答]
 --型 は 初期設定/型.json（同じ置き場の 項目.json・雛形/ も読む）。
 共通: [--直し <直しの dir>]（既定は 道具/寄せ/直し/）。終わりの値: 0＝書ける／緑、1＝寄せられない物が在る／赤、2＝使い方の誤り。
 """
@@ -20,6 +21,7 @@ import 当てる  # noqa: E402
 import 直し as 直しの形  # noqa: E402
 import 見回り as 見回りの口  # noqa: E402
 import 自己検査 as 検査  # noqa: E402
+import 質問と回答 as 質問と回答の口  # noqa: E402
 
 
 def 読む(p):
@@ -29,16 +31,32 @@ def 読む(p):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="呼び口.py")
-    ap.add_argument("する", choices=["寄せる", "配る", "見回り", "自己検査"])
+    ap.add_argument("する", choices=["寄せる", "配る", "見回り", "自己検査", "質問と回答"])
     ap.add_argument("--会社")
     ap.add_argument("--会社たち", nargs="*", default=[])
-    ap.add_argument("--型", required=True)
+    ap.add_argument("--型")
+    ap.add_argument("--表")
+    ap.add_argument("--読み替え")
+    ap.add_argument("--ファイル", default=質問と回答の口.既定のファイル)
     ap.add_argument("--前の型")
     ap.add_argument("--直し", default=直しの形.置き場)
     ap.add_argument("--今日")
     ap.add_argument("--窓", default="")
     ap.add_argument("--前の答え")
     a = ap.parse_args(argv)
+    if a.する == "質問と回答":   # 会社の型の版の鎖に乗らない質問と回答 1 枚（型・直しは読まない）
+        if not a.表 or not a.読み替え:
+            ap.error("質問と回答 には --表 と --読み替え")
+        try:
+            r = 質問と回答の口.寄せる(読む(a.表), 読む(a.読み替え), a.ファイル)
+        except (ValueError, 直しの形.直しの誤り) as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        json.dump(r, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+        return 1 if r["寄せられない物"] else 0
+    if not a.型:
+        ap.error("--型 が要る")
     今日 = dt.date.fromisoformat(a.今日) if a.今日 else dt.date.today()
     型 = 当てる.型を開く(a.型)
     直したち = 直しの形.読む(a.直し)

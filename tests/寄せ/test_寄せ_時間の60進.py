@@ -13,7 +13,7 @@ sys.path.insert(0, str(根 / "道具" / "寄せ"))
 import 当てる  # noqa: E402
 import 計算の形  # noqa: E402
 
-マスタ = "03_マスタ"
+マスタ = "2_マスタ"
 
 
 def _物(会社の行, 型の行=None, 既定=None, 答え=None):
