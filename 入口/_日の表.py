@@ -58,12 +58,46 @@ def 要確認の時刻(文脈, *欄とセル) -> list[str]:
             if c[0] and hasattr(文脈, "要確認の時刻か") and 文脈.要確認の時刻か(欄, c[1])]
 
 
+二つ目の読みを照らす役 = ("出", "退", "外出", "戻", "休憩", "時間数")
+
+
+def _同じ読みか(a, b) -> bool:
+    a, b = str(a if a is not None else "").strip(), str(b if b is not None else "").strip()
+    if a == b:
+        return True
+    ma, mb = 分(a), 分(b)
+    return ma is not None and ma == mb
+
+
+def 二つの読みを照らす(役: list, 行たち: list, 読み2: list) -> tuple[dict, list[str]]:
+    """殻が同じ原本を 2 度読んだ時（分の読みが 2 通りあり得る原本＝`18:16` と `18:15` など）の照らし。
+    返す物: ({日の字: [要確認の理由]}, 表の全体の理由)。時刻・休憩・時間数の欄が 1 つでも違えばその日は要確認（どちらの読みも採らない）。"""
+    if len(読み2) != len(行たち):
+        return {}, [f"2 つの読みの行の数が合わない（{len(行たち)} 行／{len(読み2)} 行）"]
+    日ごと = {}
+    for 行, 行2 in zip(行たち, 読み2):
+        x, y = 口.組にする(役, 行), 口.組にする(役, 行2)
+        日字 = str(x.get("日", "")).strip()
+        if 日字 != str(y.get("日", "")).strip():
+            return {}, [f"2 つの読みの日の並びが合わない（{日字}／{str(y.get('日', '')).strip()}）"]
+        違う = [f"{k.split('_')[0]}の 2 つの読みが合わない（{str(x.get(k, '')).strip()}／{str(y.get(k, '')).strip()}）"
+              for k in dict.fromkeys([*x, *y]) if k.split("_")[0] in 二つ目の読みを照らす役 and not _同じ読みか(x.get(k), y.get(k))]
+        if 違う:
+            日ごと.setdefault(日字, []).extend(違う)
+    return 日ごと, []
+
+
 def 読む(表記: str, 原本の名前: str, 見出し: list, 行たち: list, 文脈, 読み替え: dict,
-       原本の時間の語: dict, 書き方: str = "分") -> tuple[list[日の材料], list[str]]:
-    """→ (材料たち, その人の表の全体に掛かる要確認の理由)。"""
+       原本の時間の語: dict, 書き方: str = "分", 読み2: list | None = None) -> tuple[list[日の材料], list[str]]:
+    """→ (材料たち, その人の表の全体に掛かる要確認の理由)。
+
+    原本の形に印字の時間数の欄がある表（見出しに 時間数 の役）は、時刻のある日に時間数が無ければ要確認（照らす材料が欠けた日を確認済にしない）。
+    読み2: 同じ原本の 2 つ目の読み（行の並びは 行たち と同じ）。合わない欄のある日は要確認（`二つの読みを照らす`）。"""
     役 = 口.欄の役(見出し, 読み替え)
     時の書き方 = "10進" if 書き方 == "10進" else "60進"  # 時間数・原本の時間の数だけの字は時間で読む（休憩は 書き方）
     材料たち, 表の理由 = [], []
+    時間数の欄がある = "時間数" in 役
+    二つ目, 表の理由 = 二つの読みを照らす(役, 行たち, 読み2) if 読み2 is not None else ({}, [])
     合計 = None
     for 行 in 行たち:
         x = 口.組にする(役, 行)
@@ -78,6 +112,7 @@ def 読む(表記: str, 原本の名前: str, 見出し: list, 行たち: list, 
             表の理由.append(f"日「{日字}」が期間の中の日付に読めない")
             continue
         m = 日の材料(表記, d, 原本の名前)
+        m.理由 += 二つ目.get(日字, [])
         n = 1
         while f"出_{n}" in x or f"退_{n}" in x:
             a = セル(x.get(f"出_{n}"), "出")
@@ -113,12 +148,14 @@ def 読む(表記: str, 原本の名前: str, 見出し: list, 行たち: list, 
         if str(x.get("備考", "")).strip():
             m.備考.append(str(x["備考"]).strip())
         時 = str(x.get("時間数", "")).strip()
+        労 = [(s, e) for k, s, e, _ in m.区間 if k == "労働"]
         if 時:
             v = 長さの分(時, 時の書き方)
-            労 = [(s, e) for k, s, e, _ in m.区間 if k == "労働"]
             if v is None or not 労 or any(e is None for _, e in 労) or sum(e - s for s, e in 労) != v:
                 m.理由.append(f"印字の時間数「{時}」と 退−出 が合わない")
                 m.備考.append(f"印字 {時}")
+        elif 時間数の欄がある and 労:   # 照らす材料が欠けた日は照らしを飛ばして確認済にしない
+            m.理由.append("印字の時間数が無い（退−出 を照らせない）")
         for k, v in x.items():
             base = k.split("_")[0]
             if base in 役たち or not str(v).strip():
@@ -135,7 +172,9 @@ def 読む(表記: str, 原本の名前: str, 見出し: list, 行たち: list, 
             else:
                 m.備考.append(f"{k} {str(v).strip()}")
         材料たち.append(m)
-    if 合計 is not None and str(合計.get("時間数", "")).strip():
+    if 合計 is not None and 時間数の欄がある and not str(合計.get("時間数", "")).strip():
+        表の理由.append("表の合計の時間数が無い（日ごとの和を照らせない）")
+    elif 合計 is not None and str(合計.get("時間数", "")).strip():
         want = 長さの分(合計["時間数"], 時の書き方)
         got = sum(e - s for m in 材料たち for k, s, e, _ in m.区間 if k == "労働" and e is not None)
         if want != got:
@@ -146,12 +185,14 @@ def 読む(表記: str, 原本の名前: str, 見出し: list, 行たち: list, 
 
 
 def 人ごとに読む(表たち: list[dict], 文脈, 種別: str, 読み替え: dict, 原本の時間の語: dict, 書き方: str = "分"):
-    """表（1 人 1 枚）の list → 結果。表 = {勤怠の表記, 原本の名前, 見出し, 行, 読み替え?(その様式の見出しの語)}"""
+    """表（1 人 1 枚）の list → 結果。表 = {勤怠の表記, 原本の名前, 見出し, 行, 読み替え?(その様式の見出しの語),
+    読み2?(同じ原本の 2 つ目の読みの行＝分の読みが 2 通りあり得る原本。入口/README.md「2 つの読み」)}"""
     全部 = []
     for t in 表たち:
         rw = dict(読み替え)
         rw.update(t.get("読み替え", {}))
-        ms, 表の理由 = 読む(t["勤怠の表記"], t["原本の名前"], t["見出し"], t["行"], 文脈, rw, 原本の時間の語, 書き方)
+        ms, 表の理由 = 読む(t["勤怠の表記"], t["原本の名前"], t["見出し"], t["行"], 文脈, rw, 原本の時間の語, 書き方,
+                       t.get("読み2"))
         if 表の理由:
             if not ms:  # 1 日も読めない表でも人は出す（全日が 原本に無い になる）
                 d = 文脈.日付たち()[0]

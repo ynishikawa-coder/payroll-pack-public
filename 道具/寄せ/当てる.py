@@ -20,6 +20,7 @@ import calendar
 import json
 import datetime as dt
 import re
+import unicodedata
 
 import 直し as 直しの形
 
@@ -30,9 +31,16 @@ _spec = _imp.spec_from_file_location("初期設定_型の口_寄せ", _Path(__fi
 型の口 = _imp.module_from_spec(_spec)
 _spec.loader.exec_module(型の口)
 
+# 設定の選べる値は 芯/設定の表.json の 1 枚（芯/設定.py が読み口）。寄せはマスタへ書く前にここで照らす（表の外の字を書く手順に出さない）
+import sys as _sys
+_根 = str(_Path(__file__).resolve().parents[2])
+if _根 not in _sys.path:
+    _sys.path.insert(0, _根)
+from 芯 import 設定 as _設定  # noqa: E402
+
 
 def _台帳の形():
-    """台帳の写しの列（氏名・曜日・出勤退勤・休憩と労働の合計）を作る 1 か所（月次/台帳の形.py）を借りる。"""
+    """台帳の写しの列（氏名・曜日・出勤退勤・芯の日の要約の書き方）を作る 1 か所（月次/台帳の形.py）を借りる。"""
     if not hasattr(_台帳の形, "m"):
         sp = _imp.spec_from_file_location("月次_台帳の形_寄せ", _Path(__file__).resolve().parents[2] / "月次" / "台帳の形.py")
         m = _imp.module_from_spec(sp)
@@ -275,6 +283,7 @@ class 記録:
         self.答えで項目を変えた = {}  # (ファイル, タブ) → 行の id の集まり＝人の答え（値:<項目>）で項目を今の名にした行
         self.書かない = []      # 計算の形.py が外した行のうち、出口などが読む値の在った物（書かない物の一覧へ足す）
         self.無い値 = []        # 寄せた後に無い値（段の解決・芯が仮と問いにする。寄せは値を作らない）
+        self.後で = []          # (ファイル, タブ, 操作, 版, 番)＝計算の形.py の行の整理の後に当てる直しの操作（前の道具の空を読む）
 
     def 解けた(self, 鍵):
         """前の直しが出した問いを、後の直しが解いた（同じ鍵の値が今の形になった）。"""
@@ -380,8 +389,9 @@ def _行の辞書(rows) -> list[dict]:
 
 
 def _写しを埋める(o: 物, f: str, t: str, rows: list, i: int, 名: str, 記: 記録):
-    """列を足す の 値＝{"写し": …}: 足した列の空の欄を、道具が書く写し（氏名はマスタ「社員」から NO で・勤怠の要約は区間から）で埋める。
-    値は台帳の形（月次/台帳の形.py）と同じ作り方。在る値は変えない（空の欄だけ）。"""
+    """列を足す の 値＝{"写し": …}: 足した列の空の欄を、道具が書く写し（氏名はマスタ「社員」から NO で・曜日は日付から・出勤退勤は区間から）で埋める。
+    値は台帳の形（月次/台帳の形.py）と同じ作り方。在る値は変えない（空の欄だけ）。休憩の合計・労働の合計 はここで埋めない
+    （芯の数え＝決まりが要る。直しを当て終えた今の形で 勤怠の要約.py が芯で数えて埋める）。"""
     氏名 = {}
     for ff in ファイルたち(o, "03_マスタ"):
         for a in _行の辞書(o.シート[ff].get("社員") or []):
@@ -535,6 +545,11 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
 
         if する == "値をそろえる":
             値をそろえる当てる(o, f, t, rows, op, 記, 版, 番, 手がかり)
+            continue
+
+        if する == "前の道具の空を読む":
+            # 行の整理（計算の形.py: 芯が作る行・額の出所の無い行を外す・語をそろえる）の後に当てる＝外す行に問いを出さない
+            記.後で.append((f, t, op, 版, 番))
             continue
 
         if する == "列の名を変える":
@@ -830,9 +845,32 @@ def 休憩の長さへ(v: str):
     return "、".join(x for _, x in sorted(out))
 
 
-def _時間の値か(v: str) -> bool:
-    """欄の名でなく時間の値に見える（h:mm・時間の数）。"""
-    return bool(re.fullmatch(r"\d+(?::\d{2})?(?:\.\d+)?(?:時間)?", re.sub(r"\s", "", str(v))))
+def _段の解決():
+    """時間・日数の値の読み（段の解決の 会社の出勤時間・出勤日数の字）を 1 か所（初期設定/段の解決.py）から借りる。"""
+    if not hasattr(_段の解決, "m"):
+        sp = _imp.spec_from_file_location("初期設定_段の解決_当てる", _Path(__file__).resolve().parents[2] / "初期設定" / "段の解決.py")
+        m = _imp.module_from_spec(sp)
+        sp.loader.exec_module(m)
+        _段の解決.m = m
+    return _段の解決.m
+
+
+_数の字 = r"[0-9一二三四五六七八九十〇零百]"
+
+
+def _値に見えるか(v: str) -> bool:
+    """欄の名でなく時間か日数の値に見える＝数で始まる（`20`・`160:00`・`20日`・`127時間30分`）か、数の後に日・時・分が付く
+    （`約20日`・`二十日`）。欄の名（`出勤日数`・`第2欄`）は値に見えない。読めるかは `時間の値の読み` が決める。"""
+    s = "".join(unicodedata.normalize("NFKC", str(v)).split())
+    return bool(re.match(r"\d", s) or re.search(_数の字 + r"(?:日|時|分)", s))
+
+
+def 時間の値の読み(行き: str, v: str) -> str | None:
+    """`時間の値の項目`（行き）の値として読めるか: 日数の項目（`…日数`）は段の解決の `出勤日数の字`（`20`・`20 日`・`20.5日`）、
+    ほかは時間の値＝`会社の出勤時間`（`160:00`・`160`・`162.5`・`127時間30分`・`480分`）。読めれば段の解決が読む字、読めなければ None。
+    寄せと段の解決が同じ読みを使う（寄せで移した値が段の解決で読めず仮になる・読める値を寄せが残す、の食い違いを作らない）。"""
+    段 = _段の解決()
+    return (段.出勤日数の字 if str(行き).endswith("日数") else 段.会社の出勤時間)(v)
 
 
 def そろえる値(op: dict, v: str):
@@ -848,7 +886,7 @@ def そろえる値(op: dict, v: str):
         w = 休憩の長さへ(v)
         return w, w == v.strip()
     if 形 == "欄の名":
-        return (None, False) if _時間の値か(v) else (v, True)
+        return (None, False) if _値に見えるか(v) else (v, True)
     読み = op.get("読み", {})
     今たち = set(読み.values())
     s = v.strip()
@@ -863,14 +901,26 @@ def そろえる値(op: dict, v: str):
     return None, False
 
 
-def 時間の値を項目へ(rows: list, r: int, i: int, op: dict, where: str, 鍵: str, v: str, 名: str, 記: 記録, 版: int, 番: int) -> bool:
-    """形＝欄の名 の行に時間の値（`160:00`・`160`）が入っていれば、それは欄の名でなく会社の段の定数＝行の 項目 を
-    `時間の値の項目`（例 委託.雇用分の出勤時間）へ変える（値・適用開始はそのまま）。同じ会社にその項目の値の在る行が既に在れば問い。
+def 時間の値を項目へ(rows: list, r: int, i: int, op: dict, where: str, 鍵: str, v: str, 名: str, 記: 記録, 版: int, 番: int,
+                 x: str | None = None) -> bool:
+    """形＝欄の名 の行に時間か日数の値（`160:00`・`160`・`127時間30分`・`20`・`20日`・`20.5日`）が入っていれば、それは欄の名でなく
+    会社の段の定数＝行の 項目 を `時間の値の項目`（例 委託.雇用分の出勤時間・委託.雇用分の出勤日数）へ変える（値・適用開始はそのまま。
+    人の答え `値:<値>` で直した値なら、その値にして移す＝x）。同じ会社にその項目の値の在る行が既に在れば問い。
+    値に見えるがその項目の値として読めない字（`20.3日`・`約20日`・出勤日数の欄の `160:00`・出勤時間の欄の `20日`）は、黙って欄の名にも
+    定数にも残さず問い（欄の名に残すと段の解決がその名の欄を探して見つからず、黙って実の値が出る）。
     変えたか問いにしたら True（呼ぶ側は次の行へ）。"""
     行き = op["時間の値の項目"]
     k, c = 列の番号(rows, "項目"), 列の番号(rows, "会社")
     if k is None:
         return False
+    x = v if x is None else x
+    if 時間の値の読み(行き, x) is None:
+        種 = "日数（例 20・20.5）" if 行き.endswith("日数") else "時間（例 160:00・160）"
+        記.解けた(鍵)
+        記.出せない(鍵, "形の合わない値", where,
+                  f"{名}「{op['列']}」= {x} は値に見えるが {行き} の{種}として読めない（欄の名にも定数にも置かない）",
+                  [f"値:<{種.split('（')[0]}>", "値:<欄の名>", "空にする"], op.get("なぜ", ""))
+        return True
     既 = [x for x in range(1, len(rows)) if x != r and str(rows[x][k]).strip() == 行き and not 空か(rows[x][i])
          and (c is None or str(rows[x][c]).strip() == str(rows[r][c]).strip())]
     if 既:
@@ -880,9 +930,34 @@ def 時間の値を項目へ(rows: list, r: int, i: int, op: dict, where: str, �
                   ["値:<欄の名>", "空にする"], op.get("なぜ", ""))
         return True
     rows[r][k] = 行き
+    if x != v:
+        rows[r][i] = x
     記.解けた(鍵)
     記.当てた.append((版, 番, "値をそろえる", f"{where}/項目/{名}→{行き}"))
     return True
+
+
+def 設定の名(rows: list, r: int, op: dict) -> str | None:
+    """その行・列の値が読まれる会社の設定の名（芯/設定の表.json に在る名だけ）。縦持ち（会社・既定のタブ: 行の 項目 が名・列は 今の値）か、
+    横持ち（社員・勤務の型のタブ: 列の名が名）。どちらでもなければ None（設定でない列＝適用開始・割増の基礎 など）。"""
+    k = 列の番号(rows, "項目")
+    名 = str(rows[r][k]).strip() if k is not None and op["列"] in ("今の値", "値") else op["列"]
+    return 名 if 名 in _設定.表() else None
+
+
+def 表の外の字(rows: list, r: int, op: dict, w) -> str | None:
+    """書く値 w が設定の選べる値の外なら、その設定の名（書く手順に出さず問いにする）。照らさない形・空・設定でない列は None。"""
+    名 = 設定の名(rows, r, op)
+    return 名 if 名 is not None and not _設定.選べる値の字か(名, w) else None
+
+
+def 選べる値の文(名: str) -> str:
+    e = _設定.表()[名]
+    if e.get("選べる値"):
+        return "・".join(e["選べる値"])
+    if e.get("欄"):
+        return "・".join(f"{欄}＝{'/'.join(x)}" for 欄, x in e["欄"].items())
+    return {"休憩の表": "`12:00〜13:00`・`6:00超45分`・`退勤18:00超30分`"}.get(e["形"], e["形"])
 
 
 def 値をそろえる当てる(o: 物, f: str, t: str, rows: list, op: dict, 記: 記録, 版: int, 番: int, 手がかり: dict,
@@ -912,8 +987,9 @@ def 値をそろえる当てる(o: 物, f: str, t: str, rows: list, op: dict, �
         ans = o.人の答え.get(鍵, "")
         if w is None and ans.startswith("値:"):
             w = ans[2:]
-        if w is None and op.get("時間の値の項目") and ans != "空にする":
-            if 時間の値を項目へ(rows, r, i, op, where, 鍵, v, 名, 記, 版, 番):
+        if op.get("時間の値の項目") and ans != "空にする":
+            x = ans[2:] if ans.startswith("値:") else v   # 人が 値:<日数> で直した値も移す（欄の名に値を残さない）
+            if _値に見えるか(x) and 時間の値を項目へ(rows, r, i, op, where, 鍵, v, 名, 記, 版, 番, x):
                 continue
         if j is not None:  # 読んだ値を先の列へ（元の列は残す）
             if w is None:
@@ -937,6 +1013,17 @@ def 値をそろえる当てる(o: 物, f: str, t: str, rows: list, op: dict, �
             elif b != w:
                 rows[r][j] = w
             continue
+        if w is not None and (外 := 表の外の字(rows, r, op, w)) is not None:
+            # 読めた・今の形・人の答えの値でも、芯/設定の表.json の選べる値の外の字はマスタへ書かない（書けば芯が既定で数えて仮になる）
+            記.解けた(鍵)
+            if ans == "空にする":
+                rows[r][i] = ""
+                記.数["捨てた（人の答え）"] += 1
+                記.足りない.append({"所": where, "行": 名, "項目": 外, "なぜ": f"選べる値の外の「{v}」を人が空にした"})
+                continue
+            記.出せない(鍵, "表の外の字", where, f"{名}「{op['列']}」= {v}（{外} の選べる値の外: {w}）",
+                      [f"値:<{選べる値の文(外)} のどれか>", "空にする"], 手がかり.get(f"{t}/{op['列']}", op.get("なぜ", "")))
+            continue
         if w is not None:
             記.解けた(鍵)  # 前の直し（例 直し 4）が問いにした値を後の直し（直し 5）の読みが解く
             if not 今の形:
@@ -951,6 +1038,102 @@ def 値をそろえる当てる(o: 物, f: str, t: str, rows: list, op: dict, �
         記.解けた(鍵)  # 同じ値を後の直しも読めない＝後の直しの手がかり・なぜで問う
         記.出せない(鍵, "形の合わない値", where, f"{名}「{op['列']}」= {v}（{op['形']} の形へ読めない）",
                   ["値:<直した値>", "空にする"], 手がかり.get(f"{t}/{op['列']}", op.get("なぜ", "")))
+
+
+_除ける訳 = None
+
+
+def 除ける訳() -> tuple[str, ...]:
+    """割増の基礎から除ける訳（労基則 21 条の 7 つ）。正本は 初期設定/法の線の点検.json の 除ける訳（芯/計算/検査.py と同じ線）。"""
+    global _除ける訳
+    if _除ける訳 is None:
+        with open(_Path(__file__).resolve().parents[2] / "初期設定" / "法の線の点検.json", encoding="utf-8") as fh:
+            _除ける訳 = tuple(json.load(fh)["除ける訳"])
+    return _除ける訳
+
+
+def _訳の語(v) -> str:
+    return re.sub(r"[ 　]", "", str(v or ""))
+
+
+def 前の道具の空を読む当てる(o: 物, f: str, t: str, rows: list, op: dict, 記: 記録, 版: int, 番: int):
+    """前の道具（型の版 0 の形）と今の型で空の意味が違う列の空の欄を、前の道具の意味の値へ書く（値の意味を保つ）。
+
+    - 型の版 0 から寄せる会社（`o.版`＝当て始めの版が 0）で、入力に在った列の空の欄だけ（この回の直しが足した列の空は前の値でない＝触らない）。
+    - 書く値が `除く訳の列` の向き（割増の基礎＝入らない）で、その行の訳が 除ける訳（労基則 21 条の 7 つ）でなければ黙って書かず問い
+      （芯/計算/検査.py の 除けない行 と同じ線。答え `除く訳:<7 つのどれか>`・`入る`・`入らない（法の線を承知）`）。
+    - 版 1 以上の会社の空は今の型の意味（`今の型の空`）のまま＝書かない。前の道具から寄せた会社なら意味が変わっているかもしれない＝知らせ 1 つ。
+    何度当てても同じ（書いた後は空でない）。"""
+    where = f"{f}/{t}"
+    列 = op["列"]
+    i = 列の番号(rows, 列)
+    if i is None:
+        return
+    with open(_Path(__file__).resolve().parent / "直し" / "今の型の読み.json", encoding="utf-8") as fh:
+        読み = json.load(fh)
+    # 行の条件の値は前の語（手当・天引き…）でも今の語で比べる（語のそろえは直しの鎖の後＝計算の形.py）。芯が作る項目の行は寄せが外す＝問わない
+    語 = {c: {前: 今 for 今, 前たち in 表.items() for 前 in 前たち} for c, 表 in 読み["支給控除の項目の読み"].items()}
+    芯の行 = set(読み["芯が作る項目"]) | set(読み["芯が作る項目の前の名"])
+    k = 列の番号(rows, "項目")
+
+    def 合う(row) -> bool:
+        for c, want in (op.get("行") or {}).items():
+            n = 列の番号(rows, c)
+            v = "" if n is None else str(row[n]).strip()
+            if 語.get(c, {}).get(v, v) != want:
+                return False
+        return True
+
+    空の行 = [r for r in range(1, len(rows)) if 空か(rows[r][i]) and 合う(rows[r]) and any(not 空か(v) for v in rows[r])
+             and (k is None or str(rows[r][k]).strip() not in 芯の行)]
+    if not 空の行:
+        return
+    名たち = [行の名(rows, r) for r in 空の行]
+    if o.版 != 0:
+        記.知らせ.append(f"{where}/{列}: 空の行 {len(空の行)} 個（{'・'.join(名たち)}）は今の型の意味「{op['今の型の空']}」のまま。"
+                       f"前の道具では空＝「{op['前の道具の空']}」だった（前の道具から寄せた会社で前の明細と額が違えば、その行に値を書く）")
+        return
+    if (f"{where}/{列}") in {x[3] for x in 記.当てた if x[2] == "列を足す"}:
+        return   # 入力に無かった列（この回の直しが空で足した）＝前の道具の値でない
+    書く = op["前の道具の空"]
+    j = 列の番号(rows, op["除く訳の列"]) if op.get("除く訳の列") else None
+    除ける = {_訳の語(w) for w in 除ける訳()}
+    n = 0
+    for r, 名 in zip(空の行, 名たち):
+        if o.人の答え.get(f"{where}/そろえる:{列}/{名}") == "空にする":
+            continue   # 人が読めない語を 空にする と答えた欄＝前の道具の空でない
+        鍵 = f"{where}/前の道具の空:{列}/{名}"
+        ans = o.人の答え.get(鍵, "")
+        値 = 書く
+        if op.get("除く訳の列"):
+            訳 = "" if j is None else str(rows[r][j]).strip()
+            if _訳の語(訳) not in 除ける:
+                if ans.startswith("除く訳:") and _訳の語(ans[4:]) in 除ける and j is not None:
+                    rows[r][j] = ans[4:].strip()
+                    if 訳:   # 7 つの外の前の訳を人の答えで置き換えた（欄の値の数は変わらない＝足したに数えない）
+                        記.知らせ.append(f"{where}/{名}: {op['除く訳の列']} の前の訳「{訳}」を「{rows[r][j]}」へ（人の答え・前の訳は寄せの写しに在る）")
+                    else:
+                        記.数["足した"] += 1
+                elif ans == "入る":
+                    値 = "入る"
+                    記.知らせ.append(f"{where}/{名}: {列} の空を 入る に（人の答え）＝前の道具より残業などの単価が上がる")
+                elif ans == "入らない（法の線を承知）":
+                    記.知らせ.append(f"{where}/{名}: {列} の空を 入らない に（人の答え・訳は 7 つの外）＝芯は 法の線.承知 の"
+                                   " 割増.基礎に入る の印が無ければ赤にしてその手当を単価に入れて仮にする")
+                else:
+                    記.出せない(鍵, "前の道具の空", where,
+                              f"{名}: 前の道具の {列} が空＝{書く}（前の道具は割増の単価に入れなかった）。今の型の空は {op['今の型の空']}。"
+                              f"{op['除く訳の列']}「{訳}」は労基則 21 条の 7 つ（{'・'.join(除ける訳())}）のどれでもない",
+                              [f"除く訳:<{'・'.join(除ける訳())} のどれか>", "入る", "入らない（法の線を承知）"],
+                              op.get("なぜ", "除けるのは 7 つだけ（名でなく中身で判断）。7 つに当たる手当なら訳を、当たらないなら 入る（前の明細より単価が上がる）"))
+                    continue
+        rows[r][i] = 値
+        記.数["足した"] += 1
+        記.解けた(鍵)
+        記.当てた.append((版, 番, "前の道具の空を読む", f"{where}/{列}/{名}"))
+        n += 1
+    if n:
+        記.知らせ.append(f"{where}/{列}: 前の道具の空 {n} 個を前の道具の意味の値へ書いた（前の道具の空＝{書く}・今の型の空＝{op['今の型の空']}）")
 
 
 def 人の列へ移す当てる(o: 物, f: str, op: dict, 記: 記録, 版: int, 番: int):
@@ -1785,6 +1968,10 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     import 計算の形
     読み = 計算の形.読みを開く()
     計算の形.当てる(o, K, 型, 記, 答えへ, 読み)
+    for f, t, op, 版, 番 in 記.後で:
+        rows = o.シート.get(f, {}).get(t)
+        if rows:
+            前の道具の空を読む当てる(o, f, t, rows, op, 記, 版, 番)
     照らす(o, K, 記, 手がかり, 前, 答えへ)
     旧のタブを照らす(o, 記, 手がかり)
     計算の形.当てる_照らすの後(o, 前, 記, 読み)
@@ -1794,6 +1981,9 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     # 型の版を上げない読み: マスタ・台帳の 支給月・日付・時刻 の字を型の書き方へ（字だけで同じ値に決まる物だけ・見回りの赤と同じ列）。どの版の会社にも毎回
     import 書き方
     書き方.当てる(o, 記)
+    # 型の版を上げない読み: 台帳「勤怠」の写し 休憩の合計・労働の合計 を芯の数え（芯/集計 の 日の要約）で埋める・直す。どの版の会社にも毎回
+    import 勤怠の要約
+    勤怠の要約.当てる(o, 記)
 
     落ちた値を照らす(前, o, 記)
     n前, n後 = 数える(前.シート), 数える(o.シート)
