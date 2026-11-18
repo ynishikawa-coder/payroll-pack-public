@@ -136,12 +136,23 @@ def _出す物たち(out: dict) -> list:
 
 def 見当の額(行たち) -> dict:
     """芯/計算 の行 → {NO: {総支給額, 差引支給額, 仮}}（仮の人も含む＝問いに添える見込みの額。出口へは出さない）。"""
+    # 委託だけの人は 総支給額・差引支給額 の行が無い（芯/計算/README「委託だけ」）＝委託分の課税計（委託分の和）と 支払合計 で見る。
+    # 雇用分の行が在る人（委託の併用）はその行を使い、委託の行で上書きしない
+    代わり = {"委託分の課税計": "総支給額", "支払合計": "差引支給額"}
     out: dict[str, dict] = {}
+    委託の額: dict[str, dict] = {}
     for r in 行たち:
-        if r.get("項目") in ("総支給額", "差引支給額"):
+        名 = r.get("項目")
+        if 名 in ("総支給額", "差引支給額") or 名 in 代わり:
             d = out.setdefault(str(r["NO"]), {"仮": False})
-            d[r["項目"]] = r.get("値")
             d["仮"] = d["仮"] or r.get("状態") == "仮"
+            if 名 in 代わり:
+                委託の額.setdefault(str(r["NO"]), {})[代わり[名]] = r.get("値")
+            else:
+                d[名] = r.get("値")
+    for NO, w in 委託の額.items():
+        if "総支給額" not in out[NO] and "差引支給額" not in out[NO]:
+            out[NO].update(w)
     return out
 
 
