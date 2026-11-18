@@ -1,0 +1,6 @@
+{
+  "訳": "土台 agent-foundation-public を読む版の印の正本（ci.yml・public-mirror.yml・tag.yml がここを直に読む。workflow に印を書かない＝tests/test_土台の版.py が見る）。",
+  "土台": "v0.4.14",
+  "版の印を打つ道具": "v0.4.0",
+  "版の印を打つ道具の訳": "CHANGELOG から印を打つ道具 scripts/release/tags_from_changelog.py は土台 v0.4.1 で畳まれた（合流ごとに自動で打つ next_tag.py へ）。この repo は CHANGELOG の節で印を打つので、その道具が在る一番新しい版 v0.4.0 を読む。印の打ち方を土台に合わせる時に 土台 へ揃える。"
+}

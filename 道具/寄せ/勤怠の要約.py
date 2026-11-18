@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""台帳「勤怠」の写し `休憩の合計`・`労働の合計` を、芯が数えた日の値で埋める・直す（型の版を上げない読み・どの版の会社にも毎回当てる）。
+"""台帳「読んだままの勤怠」「確定した勤怠」の写し `休憩の合計`・`労働の合計` を、芯が数えた日の値で埋める・直す（型の版を上げない読み・どの版の会社にも毎回当てる）。
 
 作り方は 1 か所＝芯/集計 の `日の休憩と労働`（集計する の返す `日の要約`）。月次 の台帳（月次/台帳の形.py）と同じ値を書く。
 寄せはここで区間から数え直さない（前は 月次/台帳の形.py が休憩の区間だけを足していた＝休憩の表・長さの表で休憩を引く会社・
@@ -42,7 +42,7 @@ def _月の要約(o, 支給月: str, 日たち: list[dict], 区間たち: list[d
     from 芯.集計 import 集計する
     from 芯.集計.法の線の橋 import 法の線を引く
     マスタ = {}
-    for f in 当.ファイルたち(o, "03_マスタ"):
+    for f in 当.ファイルたち(o, "2_マスタ"):
         for t in 決まりのタブ:
             if o.シート[f].get(t):
                 マスタ.setdefault(t, o.シート[f][t])
@@ -60,7 +60,7 @@ def _月の要約(o, 支給月: str, 日たち: list[dict], 区間たち: list[d
     居る = {(str(k[0]), str(k[1])) for k in 決まり}
     居ない = sorted({str(a.get("NO", "")) for a in 日たち if (str(a.get("会社", "")), str(a.get("NO", ""))) not in 居る})
     if 居ない:
-        知らせ.append(f"{支給月}: 03_マスタ「社員」に居ない NO {'・'.join(居ない)}（休憩の合計・労働の合計 は触らない）")
+        知らせ.append(f"{支給月}: 2_マスタ「社員」に居ない NO {'・'.join(居ない)}（休憩の合計・労働の合計 は触らない）")
     日たち = [a for a in 日たち if (str(a.get("会社", "")), str(a.get("NO", ""))) in 居る]
     区間たち = [b for b in 区間たち if (str(b.get("会社", "")), str(b.get("NO", ""))) in 居る]
     日付 = sorted(str(a.get("日付", "")).strip() for a in 日たち if str(a.get("日付", "")).strip())
@@ -77,48 +77,49 @@ def _月の要約(o, 支給月: str, 日たち: list[dict], 区間たち: list[d
 def 当てる(o, 記):
     形 = 当._台帳の形()
     for f, tabs in o.シート.items():
-        if not f.startswith("04_台帳"):
+        if not f.startswith("台帳"):
             continue
-        rows = tabs.get("勤怠")
-        if not rows or any(c not in rows[0] for c in 列たち):
-            continue
-        h = [str(c) for c in rows[0]]
-        区間 = 当._行の辞書(tabs.get("勤怠の区間") or [])
-        行たち = 当._行の辞書(rows)
-        月たち: dict[str, list[int]] = {}
-        for n, a in enumerate(行たち):
-            if any(not 当.空か(v) for v in a.values()):
-                月たち.setdefault(str(a.get("支給月", "")).strip(), []).append(n)
-        知らせ, 埋めた, 直した, 空にした = [], 0, 0, 0
-        for 支給月, ns in sorted(月たち.items()):
-            日たち = [行たち[n] for n in ns]
-            区間たち = [b for b in 区間 if str(b.get("支給月", "")).strip() == 支給月]
-            要約 = _月の要約(o, 支給月, 日たち, 区間たち, 知らせ)
-            if 要約 is None:
+        for 日のタブ, 区間のタブ in zip(形.日のタブ, 形.区間のタブ):   # 読んだままの勤怠・確定した勤怠（型の版 27）
+            rows = tabs.get(日のタブ)
+            if not rows or any(c not in rows[0] for c in 列たち) or (f, 日のタブ) in 記.待つタブ:
                 continue
-            居る = {(str(x["会社"]), str(x["NO"])) for x in 要約}
-            写し = 形.写しの値("勤怠", 日たち, None, 区間たち, 日の要約=要約)
-            for n, a, w in zip(ns, 日たち, 写し):
-                if (str(a.get("会社", "")), str(a.get("NO", ""))) not in 居る:
+            h = [str(c) for c in rows[0]]
+            区間 = 当._行の辞書(tabs.get(区間のタブ) or [])
+            行たち = 当._行の辞書(rows)
+            月たち: dict[str, list[int]] = {}
+            for n, a in enumerate(行たち):
+                if any(not 当.空か(v) for v in a.values()):
+                    月たち.setdefault(str(a.get("支給月", "")).strip(), []).append(n)
+            知らせ, 埋めた, 直した, 空にした = [], 0, 0, 0
+            for 支給月, ns in sorted(月たち.items()):
+                日たち = [行たち[n] for n in ns]
+                区間たち = [b for b in 区間 if str(b.get("支給月", "")).strip() == 支給月]
+                要約 = _月の要約(o, 支給月, 日たち, 区間たち, 知らせ)
+                if 要約 is None:
                     continue
-                r = rows[n + 1]
-                for c in 列たち:
-                    i = h.index(c)
-                    前, 後 = str(r[i]).strip() if i < len(r) else "", w[c]
-                    if 前 == 後:
+                居る = {(str(x["会社"]), str(x["NO"])) for x in 要約}
+                写し = 形.写しの値(日のタブ, 日たち, None, 区間たち, 日の要約=要約)
+                for n, a, w in zip(ns, 日たち, 写し):
+                    if (str(a.get("会社", "")), str(a.get("NO", ""))) not in 居る:
                         continue
-                    r[i] = 後
-                    if not 前:
-                        埋めた += 1
-                        記.数["足した"] += 1
-                    elif 後:
-                        直した += 1
-                    else:
-                        空にした += 1
-                        記.数["捨てた（直しの持たない）"] += 1
-                    記.当てた.append((0, 0, "勤怠の要約を芯の数えで書く", f"{f}/勤怠/{c}/{n + 2}行目"))
-        if 空にした:
-            記.持たない.append((f"{f}/勤怠", 空にした, "休憩の合計・労働の合計 の写しを芯の数えにそろえた（芯が数えない日の前の写しは空に。前の値は寄せの写しに在る）"))
-        if 埋めた or 直した or 空にした:
-            知らせ.append(f"休憩の合計・労働の合計 を芯の数えで書いた（埋めた {埋めた}・直した {直した}・空にした {空にした}）")
-        記.知らせ += [f"{f}/勤怠: {x}" for x in 知らせ]
+                    r = rows[n + 1]
+                    for c in 列たち:
+                        i = h.index(c)
+                        前, 後 = str(r[i]).strip() if i < len(r) else "", w[c]
+                        if 前 == 後:
+                            continue
+                        r[i] = 後
+                        if not 前:
+                            埋めた += 1
+                            記.数["足した"] += 1
+                        elif 後:
+                            直した += 1
+                        else:
+                            空にした += 1
+                            記.数["捨てた（直しの持たない）"] += 1
+                        記.当てた.append((0, 0, "勤怠の要約を芯の数えで書く", f"{f}/{日のタブ}/{c}/{n + 2}行目"))
+            if 空にした:
+                記.持たない.append((f"{f}/{日のタブ}", 空にした, "休憩の合計・労働の合計 の写しを芯の数えにそろえた（芯が数えない日の前の写しは空に。前の値は寄せの写しに在る）"))
+            if 埋めた or 直した or 空にした:
+                知らせ.append(f"休憩の合計・労働の合計 を芯の数えで書いた（埋めた {埋めた}・直した {直した}・空にした {空にした}）")
+            記.知らせ += [f"{f}/{日のタブ}: {x}" for x in 知らせ]

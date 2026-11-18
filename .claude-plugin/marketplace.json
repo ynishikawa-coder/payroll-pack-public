@@ -1,0 +1,13 @@
+{
+  "name": "payroll-pack",
+  "owner": {
+    "name": "payroll-pack"
+  },
+  "plugins": [
+    {
+      "name": "payroll-agent",
+      "source": "./plugins/payroll-agent",
+      "description": "給与エージェントの部分（毎月の手順・守る決まり・照らし）。各社の側は口の一覧（plugins/payroll-agent/口の一覧.md）の口だけを満たす。"
+    }
+  ]
+}

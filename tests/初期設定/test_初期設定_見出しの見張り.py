@@ -33,5 +33,5 @@ def test_組のシートの全タブの1列目は会社():
         if not 鍵.startswith("事務所の設定/"):
             assert 見出し[0] == "会社", 鍵
     for 鍵, 見出し in 口.全部の見出し().items():
-        if 鍵.startswith("04_台帳_"):
+        if 鍵.startswith("台帳_"):
             assert 見出し[1] == "支給月", 鍵
