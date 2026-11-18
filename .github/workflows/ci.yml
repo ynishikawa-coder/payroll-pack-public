@@ -12,7 +12,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # 履歴と版の印を全部取る。骨の自己検査が main からの差と、出した版の節が印の時と同じかを見る
+      # （浅いと CI では赤＝tests/test_骨.py の _手元に無い）。
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

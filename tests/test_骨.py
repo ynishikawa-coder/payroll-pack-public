@@ -2,11 +2,12 @@
 
 1. 設計の目次（docs/設計/README.md）の全行の file・dir が在るか。
 2. 顧客の語が repo に載っていないか（語の束は repo に持たない。環境から渡す。無ければ skip）。
-3. 版の約束（docs/版の出し方.md）: 「互換が切れる:」は行の頭・型の版の上げに印・呼び口を変えた枝は CHANGELOG も変える。
+3. 版の約束（docs/版の出し方.md）: 「互換が切れる:」は行の頭・型の版の上げに印・呼び口を変えた枝は CHANGELOG も変える・出した版の節は印の時と同じ・
+   出した直し（道具/寄せ/直し/直し_NNNN.json）は一番新しい印の時と同じ。
 4. 入れてよい物の線（docs/設計/入れてよい物.md）: 製品の名・事務所と側の名が載っていないか・直しはどの事務所にも当たる型の版の上げか。
    束と外しの一覧は tests/data/ の 1 か所。
 """
-import hashlib
+import difflib
 import json
 import os
 import re
@@ -178,10 +179,17 @@ def _main_からの変更() -> list[str] | None:
     return None
 
 
+def _手元に無い(なぜ: str):
+    """git の履歴・印が手元に無い時。手元（浅い clone など）は skip、CI（GITHUB_ACTIONS）では赤＝CI では必ず回す。"""
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        pytest.fail(f"{なぜ}（CI の checkout は fetch-depth: 0 で履歴と印を全部取る＝.github/workflows/ci.yml）")
+    pytest.skip(f"{なぜ}（浅い clone など。git fetch --unshallow --tags origin で回る）")
+
+
 def test_呼び口を変えた枝は_changelog_に行を足す():
     変えた = _main_からの変更()
     if 変えた is None:
-        pytest.skip("main が手元に無い（CI の浅い checkout など）")
+        _手元に無い("main が手元に無い")
     assert 呼び口を変えたのに_changelog_が無い(変えた) == []
 
 
@@ -191,22 +199,203 @@ def test_呼び口を変えたのに_changelog_が無いを見つけられる():
     assert 呼び口を変えたのに_changelog_が無い(["tests/有給/test_x.py", "docs/a.md"]) == []
 
 
+# 出した版の節は書き替えない（docs/版の出し方.md）: 版の印 vX.Y.Z が在る節は、その印の時の CHANGELOG の同じ節と 1 字も違わない。
+# 節＝`## [vX.Y.Z]` の見出しの行から次の `## ` の前まで（見出しの日も含む・末の空行は見ない）。
+# 印の時に自分の節が無かった版（v0.1.0・v0.1.1）は、今も節を持たない（後から足すのも書き替え）。
+# 印の無い節は、一番新しい印より新しい版だけ（版の節を作って main へ入れ、印を打つまでの間）。
+版の印の形 = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+
+
+def 版の節の全文(text: str) -> dict[str, str]:
+    out, 今 = {}, None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            m = re.match(r"## \[(v\d+\.\d+\.\d+)\]", line)
+            今 = m.group(1) if m else None
+            if 今:
+                out[今] = []
+        if 今:
+            out[今].append(line)
+    return {k: "\n".join(v).rstrip("\n ") for k, v in out.items()}
+
+
+def _版の数(版: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in 版の印の形.fullmatch(版).groups())
+
+
+def 出した版の節の書き替え(今: str, 印の時: dict[str, str]) -> list[str]:
+    """今の CHANGELOG と {版の印: その印の時の CHANGELOG} → 書き替えた節の赤。"""
+    今の節 = 版の節の全文(今)
+    赤 = []
+    for 版, 前 in sorted(印の時.items(), key=lambda kv: _版の数(kv[0])):
+        前の節 = 版の節の全文(前)
+        if 版 not in 前の節:
+            if 版 in 今の節:
+                赤.append(f"{版}: 印の時の CHANGELOG に無かった節を後から足した")
+        elif 版 not in 今の節:
+            赤.append(f"{版}: 出した版の節を消した")
+        elif 今の節[版] != 前の節[版]:
+            違い = [l for l in difflib.unified_diff(前の節[版].splitlines(), 今の節[版].splitlines(), lineterm="", n=0)
+                  if l[:1] in "+-" and not l.startswith(("+++", "---"))]
+            赤.append(f"{版}: 出した版の節を書き替えた（印の時と違う行: {' / '.join(x[:60] for x in 違い[:4])}）")
+    if 印の時:
+        一番新しい = max(印の時, key=_版の数)
+        for 版 in 今の節:
+            if 版 not in 印の時 and _版の数(版) <= _版の数(一番新しい):
+                赤.append(f"{版}: 版の印が無いのに、一番新しい印 {一番新しい} より新しくない節")
+    return 赤
+
+
+def _印の時の_changelog() -> dict[str, str] | None:
+    """{版の印: その印の時の CHANGELOG.md}。git・印・印の中身が手元に無い（浅い clone は印が欠ける）なら None。"""
+    def git(*a):
+        return subprocess.run(["git", "-C", str(根), *a], capture_output=True, text=True, check=True).stdout
+    try:
+        if git("rev-parse", "--is-shallow-repository").strip() != "false":
+            return None
+        印たち = [t for t in git("tag", "-l", "v*").split() if 版の印の形.fullmatch(t)]
+        if not 印たち:
+            return None
+        return {t: git("show", f"{t}:CHANGELOG.md") for t in 印たち}
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def test_出した版の節は印の時と同じ():
+    印の時 = _印の時の_changelog()
+    if 印の時 is None:
+        _手元に無い("版の印（git の tag）とその時の CHANGELOG が手元に無い")
+    assert 出した版の節の書き替え(CHANGELOG.read_text(encoding="utf-8"), 印の時) == []
+
+
+def test_出した版の節の書き替えを見つけられる():
+    印の時 = {
+        "v0.1.0": "## 未リリース\n- 初め\n",
+        "v0.1.2": "## 未リリース\n\n## [v0.1.2] - 2026-11-12\n- 甲\n",
+        "v0.2.0": "## 未リリース\n\n## [v0.2.0] - 2026-11-13\n- 乙\n\n## [v0.1.2] - 2026-11-12\n- 甲\n",
+    }
+    正 = "## 未リリース\n- 新\n\n## [v0.3.0] - 2026-11-14\n- 丙\n\n## [v0.2.0] - 2026-11-13\n- 乙\n\n## [v0.1.2] - 2026-11-12\n- 甲\n"
+    assert 出した版の節の書き替え(正, 印の時) == []
+    # 合流で未リリースの行が出した版の節へ紛れた（#174 の形）
+    assert len(出した版の節の書き替え(正.replace("- 乙\n", "- 乙\n- 紛れた行\n"), 印の時)) == 1
+    assert len(出した版の節の書き替え(正.replace("- 甲", "- 甲を直した"), 印の時)) == 1  # 字を替えた
+    assert len(出した版の節の書き替え(正.replace("2026-11-13", "2026-11-15"), 印の時)) == 1  # 見出しの日
+    assert len(出した版の節の書き替え(正.replace("## [v0.1.2] - 2026-11-12\n- 甲\n", ""), 印の時)) == 1  # 消した
+    assert len(出した版の節の書き替え(正 + "\n## [v0.1.0] - 2026-11-11\n- 後から\n", 印の時)) == 1  # 印の時に無かった節
+    assert len(出した版の節の書き替え(正 + "\n## [v0.1.5] - 2026-11-13\n- 印が無い\n", 印の時)) == 1  # 印の無い古い版
+
+
+# 出した直しは書き替えない（docs/版の出し方.md・2026-11-18 オーナーの決定）: 版の印に入っている 道具/寄せ/直し/直し_NNNN.json は、
+# それを持つ一番新しい印の時の中身と 1 字（1 byte）も違わない。消すのも赤。直したい時は新しい番号の直しを足す。
+# 一番新しい印と比べる＝それより前の印の後の書き替え（直し 1・3 は v0.1.7 で、直し 20 は v0.23.0 で出した中身が今の正）は
+# 出した事実として受け、これからを止める。印の時の中身は git から直に読む（写しの指紋の表を持たない）。
+直しの置き場 = "道具/寄せ/直し/"
+直しの名の形 = re.compile(r"直し_\d{4}\.json")
+
+
+def 出した直しの書き替え(今: dict[str, bytes], 印の時: dict[str, dict[str, bytes]]) -> list[str]:
+    """今の {直しの名: 中身} と {版の印: {直しの名: その印の時の中身}} → 書き替えた・消した直しの赤。"""
+    最後: dict[str, tuple[str, bytes]] = {}
+    for 版 in sorted(印の時, key=_版の数):
+        for 名, 中身 in 印の時[版].items():
+            最後[名] = (版, 中身)
+    赤 = []
+    for 名, (版, 前) in sorted(最後.items()):
+        if 名 not in 今:
+            赤.append(f"{名}: 出した直し（{版} に在る）を消した")
+        elif 今[名] != 前:
+            違い = [l for l in difflib.unified_diff(前.decode("utf-8", "replace").splitlines(),
+                                                  今[名].decode("utf-8", "replace").splitlines(), lineterm="", n=0)
+                  if l[:1] in "+-" and not l.startswith(("+++", "---"))]
+            赤.append(f"{名}: 出した直しを書き替えた（{版} の時と違う行: {' / '.join(x[:60] for x in 違い[:4])}"
+                      "・直したい時は新しい番号の直しを足す）")
+    return 赤
+
+
+def _今の直し(base: Path = 根) -> dict[str, bytes]:
+    dir_ = base / 直しの置き場
+    return {f.name: f.read_bytes() for f in sorted(dir_.glob("直し_*.json"))} if dir_.is_dir() else {}
+
+
+def _印の時の直し() -> dict[str, dict[str, bytes]] | None:
+    """{版の印: {直しの名: その印の時の中身}}。git・印・印の中身が手元に無い（浅い clone）なら None。"""
+    def git(*a, input=None):
+        return subprocess.run(["git", "-C", str(根), "-c", "core.quotepath=off", *a], input=input,
+                              capture_output=True, check=True).stdout
+    try:
+        if git("rev-parse", "--is-shallow-repository").decode().strip() != "false":
+            return None
+        印たち = [t for t in git("tag", "-l", "v*").decode().split() if 版の印の形.fullmatch(t)]
+        if not 印たち:
+            return None
+        印の時: dict[str, dict[str, str]] = {}
+        for t in 印たち:
+            印の時[t] = {}
+            for 行 in git("ls-tree", "-z", t, "--", 直しの置き場).decode().split("\0"):
+                if not 行:
+                    continue
+                頭, path = 行.split("\t", 1)
+                名 = path.rsplit("/", 1)[-1]
+                if 直しの名の形.fullmatch(名):
+                    印の時[t][名] = 頭.split()[2]
+        中身 = {}
+        for sha in sorted({s for d in 印の時.values() for s in d.values()}):
+            中身[sha] = git("cat-file", "blob", sha)
+        return {t: {名: 中身[sha] for 名, sha in d.items()} for t, d in 印の時.items()}
+    except (subprocess.CalledProcessError, FileNotFoundError, UnicodeDecodeError):
+        return None
+
+
+def test_出した直しは一番新しい印の時と同じ():
+    印の時 = _印の時の直し()
+    if 印の時 is None:
+        _手元に無い("版の印（git の tag）とその時の直しが手元に無い")
+    assert 出した直しの書き替え(_今の直し(), 印の時) == []
+
+
+def test_出した直しの書き替えを見つけられる(tmp_path):
+    a1, a3 = '{"版": 1}\n'.encode(), '{"版": 3}\n'.encode()
+    印の時 = {
+        "v0.1.0": {"直し_0001.json": '{"版": 1, "前の形": 1}\n'.encode()},
+        "v0.1.2": {"直し_0001.json": a1, "直し_0002.json": '{"版": 2}\n'.encode()},
+        "v0.2.0": {"直し_0001.json": a1, "直し_0002.json": '{"版": 2}\n'.encode(), "直し_0003.json": a3},
+    }
+    (tmp_path / 直しの置き場).mkdir(parents=True)
+
+    def 置く(名, 中身):
+        (tmp_path / 直しの置き場 / 名).write_bytes(中身)
+
+    置く("直し_0001.json", a1)  # v0.1.0 の後に書き替えたが、一番新しい印 v0.2.0 の時と同じ＝出した事実として受ける
+    置く("直し_0002.json", '{"版": 2}\n'.encode())
+    置く("直し_0003.json", a3)
+    置く("直し_0004.json", '{"版": 4, "まだ出していない": 1}\n'.encode())  # 印の無い新しい直しは見ない
+    assert 出した直しの書き替え(_今の直し(tmp_path), 印の時) == []  # 緑
+    置く("直し_0003.json", '{"版": 3 }\n'.encode())  # 壊す: 1 字（空白）を足した
+    赤 = 出した直しの書き替え(_今の直し(tmp_path), 印の時)
+    assert len(赤) == 1 and 赤[0].startswith("直し_0003.json: 出した直しを書き替えた（v0.2.0 の時と違う行")
+    置く("直し_0003.json", a3)  # 戻す
+    置く("直し_0001.json", '{"版": 1, "前の形": 1}\n'.encode())  # 壊す: 初めて出した印の時の中身へ戻した（一番新しい印と違う）
+    assert len(出した直しの書き替え(_今の直し(tmp_path), 印の時)) == 1
+    置く("直し_0001.json", a1)  # 戻す
+    (tmp_path / 直しの置き場 / "直し_0002.json").unlink()  # 壊す: 出した直しを消した
+    assert 出した直しの書き替え(_今の直し(tmp_path), 印の時) == ["直し_0002.json: 出した直し（v0.2.0 に在る）を消した"]
+    置く("直し_0002.json", '{"版": 2}\n'.encode())  # 戻す
+    assert 出した直しの書き替え(_今の直し(tmp_path), 印の時) == []  # 緑
+
+
 # ---- 4. 入れてよい物の線（docs/設計/入れてよい物.md・⟦鍵:給与計算/パックの関所の機械の赤⟧）----
 # a. 製品の名の束が .py・.json・.md・.html（md・html は <!-- 例 -->〜<!-- /例 --> の外）と file・dir の名に出たら赤
 # b. 事務所・側の名の束が .py・.json に出たら赤（設計書の地の文は見ない）
 # c. 直し（道具/寄せ/直し/直し_NNNN.json）に「どの事務所にも当たる型の版の上げ」の印が無ければ赤
-#    （出た版の直しで印を持たない 2・4・5 は中身の指紋で固定＝版 ≤ 5 を名乗るだけの新しい file は通さない）
+#    （出た版の直しで印を持たない 2・4・5 だけ通す。中身は上の「出した直しは書き替えない」が印の時の file と照らして固定＝
+#     名の番号と版が違う file は赤なので、版 ≤ 5 を名乗るだけの新しい file は通らない）
 # 外し（tests/data/外し.json）は path ごと。外した file が当たらなくなったら、その行が赤（消し忘れを残さない）。
 データ = 根 / "tests" / "data"
 束を見ない = ("tests/data/", "CHANGELOG.md")  # 束そのもの・出した版の記録（書き替えない）
 例の節 = re.compile(r"<!-- 例 -->.*?<!-- /例 -->", re.S)
-# 出た版の直しのうち印を持たずに通る物（中身は変えない決まり）。どの事務所にも当たると棚卸しした 2・4・5 だけで、
-# 中身の指紋（json を鍵の順に並べた字の sha256）が合う時だけ通す。直し 1・3 は便 2 で前の形の読み替えを外し、印を持つ。
-出た直しの指紋 = {
-    2: "a92e46b23f0fe2ea5e6983aa8e0d64887248699a533c98cdc908bd5bda44e541",
-    4: "0575c42a1cd39fcb64a1cce4b9fde16211c1ca17c4a5399aba9eb287406751de",
-    5: "bb6a01d64ddaaa18e8ed5f103edd6ff92552c71ca8bbc0c7f7a05b8246d25f2c",
-}
+# 出た版の直しのうち印を持たずに通る物。どの事務所にも当たると棚卸しした 2・4・5 だけ（中身は v0.1.2・v0.1.3 で出した時のまま＝
+# test_出した直しは一番新しい印の時と同じ が git の印の時の file と照らす）。直し 1・3 は便 2 で前の形の読み替えを外し、印を持つ。
+印の無い出た直し = frozenset({2, 4, 5})
 当たるの印 = "全ての事務所"
 
 
@@ -265,11 +454,7 @@ def 側の名の当たる所(base: Path, words: list[str]) -> dict[str, list[str
     return hits
 
 
-def 指紋(d: dict) -> str:
-    return hashlib.sha256(json.dumps(d, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-
-
-def 直しの当たらない所(base: Path, 型の版: int, 出た=出た直しの指紋) -> dict[str, list[str]]:
+def 直しの当たらない所(base: Path, 型の版: int, 出た=印の無い出た直し) -> dict[str, list[str]]:
     hits: dict[str, list[str]] = {}
     dir_ = base / "道具" / "寄せ" / "直し"
     for f in sorted(dir_.glob("直し_*.json")) if dir_.is_dir() else []:
@@ -280,8 +465,8 @@ def 直しの当たらない所(base: Path, 型の版: int, 出た=出た直し�
         if not m or not isinstance(版, int) or int(m.group(1)) != 版:
             hits[name] = [f"file の名の番号と版（{版}）が違う"]
             continue
-        if 版 in 出た and 指紋(d) == 出た[版]:
-            continue  # 出た版の直し（中身は変えない・どの事務所にも当たると棚卸し済み）
+        if 版 in 出た:
+            continue  # 出た版の直し（どの事務所にも当たると棚卸し済み・中身は出した直しの照らしが固定）
         誤り = []
         if d.get("当たる") != 当たるの印:
             誤り.append(f"`\"当たる\": \"{当たるの印}\"` の印が無い（1 社のための直しは入れない）")
@@ -373,17 +558,15 @@ def test_直しの印を見つけられる(tmp_path):
         (dir_ / (名 or f"直し_{版:04d}.json")).write_text(json.dumps(d), encoding="utf-8")
         return d
 
-    出た = {2: 指紋(置く(2))}  # 印の無い出た版の直し（指紋で固定）
+    置く(2)
+    出た = {2}  # 印の無い出た版の直し（中身は test_出した直しの書き替えを見つけられる の照らしが固定）
     置く(1, 当たる=当たるの印)
     置く(6, 当たる=当たるの印)
     p = "道具/寄せ/直し/直し_{:04d}.json".format
-    assert 線の赤(直しの当たらない所(tmp_path, 6, 出た), {}) == []  # 緑（2 は指紋が合う・1 と 6 は印）
-    assert 線の赤(直しの当たらない所(tmp_path, 6, {}), {}) == [
-        f"{p(2)}: `\"当たる\": \"{当たるの印}\"` の印が無い（1 社のための直しは入れない）"]  # 指紋の無い 2 は印が要る
-    置く(2, なぜ="作り物の 1 社の読み替え")  # 壊す: 出た版の直しの中身を変えた
-    assert len(線の赤(直しの当たらない所(tmp_path, 6, 出た), {})) == 1
-    置く(2)  # 戻す
-    置く(2, 名="直し_0009.json")  # 壊す: 版 ≤ 5 を名乗る新しい file（指紋が合っても名の番号と版が違う）
+    assert 線の赤(直しの当たらない所(tmp_path, 6, 出た), {}) == []  # 緑（2 は出た版・1 と 6 は印）
+    assert 線の赤(直しの当たらない所(tmp_path, 6, set()), {}) == [
+        f"{p(2)}: `\"当たる\": \"{当たるの印}\"` の印が無い（1 社のための直しは入れない）"]  # 出た版でない 2 は印が要る
+    置く(2, 名="直し_0009.json")  # 壊す: 版 ≤ 5 を名乗る新しい file（名の番号と版が違う）
     assert 線の赤(直しの当たらない所(tmp_path, 6, 出た), {}) == [f"{p(9)}: file の名の番号と版（2）が違う"]
     (dir_ / "直し_0009.json").unlink()
     置く(7)  # 壊す: 印の無い新しい直し
