@@ -9,6 +9,7 @@ import datetime as dt
 import re
 
 import 当てる
+import 直し as 直しの形
 
 月の置き場の名 = re.compile(r"(\d{4})\.(\d{2})支給（(\d{1,2})月分）")
 
@@ -67,32 +68,25 @@ def 名の期限(名: str):
         return None
 
 
-def 置き場を見る(会社: dict, 今日: dt.date, 窓: str) -> list[dict]:
-    """置き場の一覧（名だけ）から、消す問いへ並べる物を拾う。"""
+def 置き場を見る(会社: dict, 今日: dt.date, 窓: str, 止め: list | None = None) -> list[dict]:
+    """置き場の一覧（名だけ）から、消す問いへ並べる物を拾う。
+
+    止め＝直しの「前の置き場を止める」の (前の名, 今の名, 版)。前の形の置き場の名の物は消さずに 作り直す と並べる
+    （Drive の型 §10＝前の形の Drive は寄せずに作り直す。寄せる も同じ名で止まる）。"""
     out = []
     for p in 会社.get("置き場", []):
         名 = p.rstrip("/").split("/")[-1]
         親 = p.rstrip("/").rsplit("/", 1)[0] if "/" in p.rstrip("/") else ""
         期限 = 名の期限(p)
         行 = None
-        頭 = p.split("/")[0]
-        直の子 = p.rstrip("/").count("/") == 1
-        if 頭.startswith("99_") and 直の子:
-            if 期限 is None:
-                行 = ("期限が無い", "", "期限を付ける（置いた日の翌月末）か、原本なら原本の置き場へ移す（中を見た窓が決める）")
-            elif 期限 <= 今日:
-                行 = ("期限が来た", 期限.isoformat(), "消す")
-        elif 頭 == "02_初回の書類" and 直の子:
-            ok = 会社.get("初回の確認の OK の日")
-            if ok and dt.date.fromisoformat(ok) <= 今日:
-                行 = ("初回の確認の OK の後", ok, "原本は最初の月の 01_原本/ へ 書類_ を付けて移す・残りは 90_履歴/ へ消す日を付けて移す")
-            else:
-                行 = ("立ち上げの置き場", ok or "", "初回の確認の OK の日を管理表に書く（その日が期限）")
-        elif p.startswith("90_履歴/") and 名.startswith("消す_") and 期限 and 期限 <= 今日:
+        前の名 = next((前 for 前, _, _ in (止め or []) if 直しの形.前の名か(p, 前)), None)
+        if 前の名:
+            行 = ("前の形の置き場", "", f"消さずに残し、会社の Drive を新しい形で作り直す（前の名「{前の名}」・Drive の型 §10）")
+        elif p.startswith("9_履歴/") and 名.startswith("消す_") and 期限 and 期限 <= 今日:
             行 = ("消す日が過ぎた", 期限.isoformat(), "消す")
         elif 名.startswith("旧_") or "コピー" in 名 or "（1）" in 名:
             行 = ("旧_・写しの名", "", "その会社の寄せで今のタブ・file と照らしてから消す")
-        elif (頭.startswith("80_答え") and p.rstrip("/") == 頭) or 名.startswith("照合_"):
+        elif (頭 := p.split("/")[0]).startswith("80_答え") and p.rstrip("/") == 頭 or 名.startswith("照合_"):
             行 = ("答え（開発の間だけ）", "", "事務所の根から外す（答えは開発の手元・確かめと仮.md）")
         if 行:
             out.append({"会社": 会社["会社"], "物": 名, "置き場": 親 or "（組の根）", "中を見た窓": 窓,
@@ -108,7 +102,7 @@ def 見回り(会社たち: list[dict], 直したち: list[dict], 今の版: int
     前の答え = 前の答え or {}
     行たち = []
     for c in 会社たち:
-        行たち += 置き場を見る(c, 今日, 窓)
+        行たち += 置き場を見る(c, 今日, 窓, 直しの形.前の置き場(直したち))
         if c.get("シート"):
             記 = 当てる.記録()
             当てる.旧のタブを照らす(当てる.物(c), 記)
@@ -141,7 +135,7 @@ def 書き方を見る(会社: dict) -> list[dict]:
     形 = 当てる._台帳の形()
     out = []
     for f, tabs in (会社.get("シート") or {}).items():
-        if not (f.startswith("03_マスタ") or f.startswith("04_台帳")):
+        if not (f.startswith("2_マスタ") or f.startswith("台帳")):
             continue
         for t, rows in tabs.items():
             if not rows:
@@ -152,7 +146,7 @@ def 書き方を見る(会社: dict) -> list[dict]:
                     out.append({"会社": 会社["会社"], "所": f"{f}/{t}/{n}行目", "ずれ": x})
     for p in 会社.get("置き場", []):
         部分 = p.rstrip("/").split("/")
-        if len(部分) >= 2 and 部分[0] == "10_月ごと":
+        if len(部分) >= 2 and 部分[0] == "3_月ごと":
             m = 月の置き場の名.fullmatch(部分[1])
             if not m or not 1 <= int(m.group(3)) <= 12:
                 out.append({"会社": 会社["会社"], "所": "/".join(部分[:2]), "ずれ": f"月の置き場の名「{部分[1]}」（YYYY.MM支給（M月分））"})

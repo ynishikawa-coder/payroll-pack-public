@@ -1,26 +1,31 @@
 """例の確かめ: 月の計算の前に、その会社の決まりの「例」を全部、今のマスタの値で芯に通して照らす（月次/README.md「例の確かめ」）。
 
-決まりは 給与のルール.md（人と AI が読む）と 03_マスタ（計算が読む）に書かれる。2 つが同じ事を言っているかは、
+決まりは 給与のルール.md（AI が書き、AI が読む。人は読まない）と 2_マスタ（計算が読む）に書かれる。2 つが同じ事を言っているかは、
 マスタの欄が埋まったか・字が選べる値かを見るだけでは分からない（選べる値の中で取り違えた値は、どの照らしも通る）。
-そこで決まりごとに「この打刻ならこう数える」の例を 03_マスタ「例」に置き、事務所が確かめた日を書く。
-この口は例を今のマスタの値で芯/集計（と期間は入口の文脈）に通し、次のどれかが 1 つでもあれば その会社の月を通さない:
+そこで 給与のルール.md の決まりごと（`### <決まりの名>`）に、文の下へ「この打刻ならこう数える」の例の表を置く。
+AI がその例を人の言葉にして事務所の担当者 1 人に確かめてもらい、確かめた日と人を表に書く。
+`MDから例を読む` が表を例の行（1 行＝dict）にし、この口（`確かめる`）が例を今のマスタの値で芯/集計（と期間は入口の文脈）に
+通し、次のどれかが 1 つでもあれば その会社の月を通さない:
 
   - 例が 1 つも無い
   - 例の期待と芯の数えが合わない（取り違え・書けていない決まり）
-  - 事務所が確かめた日の無い例（AI の取り違えは例にも同じに入る＝人が読む所はここ 1 か所）
-  - `書けない` の例（マスタに書けない決まり＝芯が決まりどおりに数えられない）
+  - 事務所が確かめた日の無い例（AI の取り違えは例にも同じに入る＝人が確かめる所はここ 1 か所）
+  - 確かめた人が空か、事務所の設定「確かめてよい人」の名簿に居ない例（誰が書いても通る申告にしない。
+    名簿が渡されない・読めない・空なら、どの例も確かめていないとして止める）
+  - `書けない` の例（マスタに書けない決まり＝芯が決まりどおりに数えられない。読めない MD の表・行も `書けない` の行になる）
   - 読めない例（字の誤り）
 
 返す物: {"通った": bool, "数": 例の数, "合わない": [{"例の番号", "訳"}], "止め": [訳]}
-（`月次.月を回す` が 通った でなければ、その会社の全員を関所で外す＝出口へ出さない）。
+（`月次.月を回す`・`月次.賞与を回す` が 通った でなければ、その会社の全員を関所で外す＝出口へ出さない）。
 
 例は決まりの文から作る（過去の給与ソフトの答えからは作らない）。答え合わせではない: 照らす相手は事務所が確かめた例。
-芯・入口・初期設定の部品は呼ぶだけ（中身を変えない）。Drive を開かない。
+芯・入口・初期設定の部品は呼ぶだけ（中身を変えない）。Drive を開かない（MD の字は殻が読んで渡す）。
 """
 from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -108,6 +113,102 @@ def 行たち(表) -> list[dict]:
         return [{h: (r[i] if i < len(r) else "") for i, h in enumerate(見出し)} for r in 表[1:]
                 if any(_字(c) for c in r)]
     return [dict(r) for r in 表]
+
+
+# --- 給与のルール.md の例の表を読む（形の約束: 決まりごとに `### <決まりの名>`・文・その下に例の表） ---
+
+MDの例の列 = tuple(c for c in 例の列 if c != "会社")   # MD の表の列（会社は MDから例を読む の引数で埋める）
+読めない印 = "給与のルール.md の例の表が読めない"   # 読めない表・行は 種類＝書けない の行にし、備考の頭にこの印を置く
+
+
+def _表の行か(行: str) -> bool:
+    return 行.lstrip().startswith("|")
+
+
+def _升(行: str) -> list[str]:
+    """`| a | b |` → ["a", "b"]（`\\|` は升の中の | として読む）。"""
+    s = 行.strip()
+    s = s[1:] if s.startswith("|") else s
+    s = s[:-1] if s.endswith("|") and not s.endswith("\\|") else s
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", s)]
+
+
+def _区切りの行か(升: list[str]) -> bool:
+    return bool(升) and all(re.fullmatch(r":?-{3,}:?", c) for c in 升)
+
+
+def MDから例を読む(字: str, 会社: str) -> list[dict]:
+    """給与のルール.md の字 → 例の行の並び（前のマスタ「例」の 1 行と同じ鍵の dict・会社 は引数で埋める）。`確かめる` へそのまま渡す。
+
+    読む形: `### <決まりの名>` の見出しの下の Markdown の表。表の列は `MDの例の列`（並びは問わない・足りない列も外の列も
+    読めない）。決まり の列には照らすマスタの項目の名（芯/設定の表.json の名）を書き、読んだ行の 決まり は
+    `給与のルール.md#<決まりの名>（<決まり の升>）` にする。HTML の注（<!-- -->）とコードの囲みの中は読まない。
+
+    既定は止める側: 次の物は、その表・その行を `種類＝書けない`・`備考＝<読めない印>: <訳>` の行にして返す
+    （`確かめる` が会社を出さない）。見出しの外（`###` の下でない）の表／列の欠け・外の列・同じ列が 2 つ／区切りの行の無い表／
+    升の数が見出しと違う行。会社 が空なら 例の誤り。"""
+    会社 = _字(会社)
+    if not 会社:
+        raise 例の誤り("MDから例を読む の 会社 が空")
+    字 = re.sub(r"<!--.*?-->", lambda m: "\n" * m.group(0).count("\n"), 字 or "", flags=re.S)
+    行たち_ = 字.splitlines()
+    out: list[dict] = []
+    見出し: str | None = None   # 今の `###` の決まりの名（`#`・`##` の見出しで外れる）
+    囲み = False
+    i = 0
+
+    def 読めない(何行目: int, 訳: str):
+        out.append({"会社": 会社, **{c: "" for c in MDの例の列}, "例の番号": f"（給与のルール.md {何行目} 行目）",
+                    "決まり": f"給与のルール.md#{見出し}" if 見出し else "（見出しの外）", "種類": "書けない",
+                    "備考": f"{読めない印}: {訳}"})
+
+    while i < len(行たち_):
+        行 = 行たち_[i]
+        if 行.lstrip().startswith(("```", "~~~")):
+            囲み = not 囲み
+            i += 1
+            continue
+        if 囲み:
+            i += 1
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", 行)
+        if m:
+            見出し = m.group(2).strip() if len(m.group(1)) == 3 else None
+            i += 1
+            continue
+        if not _表の行か(行):
+            i += 1
+            continue
+        始め = i
+        表 = []
+        while i < len(行たち_) and _表の行か(行たち_[i]):
+            表.append(_升(行たち_[i]))
+            i += 1
+        if 見出し is None:
+            読めない(始め + 1, "表が `### <決まりの名>` の見出しの下に無い（決まりごとの見出しの下に置く）")
+            continue
+        頭 = 表[0]
+        if len(表) < 2 or not _区切りの行か(表[1]) or len(表[1]) != len(頭):
+            読めない(始め + 1, "表の 2 行目が見出しと同じ数の区切り（|---|）でない")
+            continue
+        欠け = [c for c in MDの例の列 if c not in 頭]
+        外 = [c for c in 頭 if c not in MDの例の列]
+        二つ = sorted({c for c in 頭 if 頭.count(c) > 1})
+        if 欠け or 外 or 二つ:
+            訳 = "／".join(x for x in (f"無い列: {'・'.join(欠け)}" if 欠け else "", f"外の列: {'・'.join(外)}" if 外 else "",
+                                     f"2 つある列: {'・'.join(二つ)}" if 二つ else "") if x)
+            読めない(始め + 1, f"表の列が例の列と違う（{訳}）")
+            continue
+        for k, 升 in enumerate(表[2:], 始め + 3):
+            if len(升) != len(頭):
+                読めない(k, f"升の数 {len(升)} が見出しの {len(頭)} と違う")
+                continue
+            if not any(升):
+                continue
+            r = dict(zip(頭, 升))
+            r["決まり"] = f"給与のルール.md#{見出し}（{r['決まり']}）" if r["決まり"] else f"給与のルール.md#{見出し}"
+            out.append({"会社": 会社, **{c: r[c] for c in MDの例の列}})
+    return out
 
 
 def _月(支給月: str) -> str:
@@ -222,9 +323,152 @@ def 日で見分ける名() -> frozenset:
     """1 日の例で値の取り違えを見分けられる決まり: 芯/集計 が勤務の型ごとに引く名（`.引く("名", 型)`）のうち、
     選べる値の決まった形（選ぶ・端数の語）の物。週・月で効く決まりは 1 日の例では見分けられない（覆いの照らしだけ）。"""
     from 芯 import 設定
-    字 = "".join(p.read_text(encoding="utf-8") for p in sorted((_根 / "芯" / "集計").glob("*.py")))
-    型で引く = set(re.findall(r'\.引く\("([^"]+)",\s*型', 字))
+    型で引く = 型で引く名(sorted((_根 / "芯" / "集計").glob("*.py")))
     return frozenset(n for n in 型で引く if 設定.表().get(n, {}).get("形") in ("選ぶ", "端数の語")) - _週と期間で効く名
+
+
+class 引き方が読めない(RuntimeError):
+    """芯/集計 の決まりの引き方が、型で引くかを見分けられる形でない（見分けの照らしが黙って減らないよう止める）。"""
+
+
+def 型で引く名(files, 名たち=None) -> set[str]:
+    """芯/集計 の .py を構文で読み、勤務の型で引く決まりの名を返す（名の字の正規表現でなく構文木で読む）。
+
+    引く口 = 芯/集計 で 名 と 型 の 2 つを引数に持つ関数（`決まり.引く`・`決まり.曜日の値` など。定義から拾う）と、
+    自分の引数を引く口の名へそのまま渡す包み（`def _引(n, 型): return 決.引く(n, 型)`。引数の名は問わない・
+    包みの包みも拾う）。口の呼び出しで、名が字で書かれ、型の位置（位置か名で渡す）に None でない物を渡す物を
+    「型で引く」に数える。既定は止める側（書き方を変えると見分けの照らしが黙って減る穴を塞ぐ）:
+      - 名が字でない呼び出しは、囲む関数が口として拾われ、その口の名の引数をそのまま渡す時だけ通す。ほかは `引き方が読めない`
+      - 包みが型の位置へ自分の引数でも None でもない物を渡す（型で引くかが呼び出しで決まらない）は `引き方が読めない`
+      - 引く口が 1 つも見つからない（`引く` の定義が無い）は `引き方が読めない`
+    閉じた照らし（呼び方の抜けを 1 つずつ塞ぐのでなく、次の書き方の変化でも黙って減らない）: `名たち`（既定は見分けの
+    元＝芯/設定の表.json の 選ぶ・端数の語 で集計が読む名）の字が 芯/集計 のどこかに出たら、その字は口の呼び出しの名として
+    数えた物か、事務所の承知の印を読む所（`_承知を読む口`）でなければ `引き方が読めない`。
+    口の呼び方: メソッドは `x.名(…)`、関数は `名(…)`・`モジュール.名(…)`・`from … import 名 as 別名` の別名でも照らす。"""
+    import ast
+    木たち = [ast.parse(Path(f).read_text(encoding="utf-8"), filename=str(f)) for f in files]
+    関数 = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+    def 引数(f) -> list[str]:
+        out = [a.arg for a in [*f.args.posonlyargs, *f.args.args]]
+        return out[1:] if out[:1] in (["self"], ["cls"]) else out
+
+    def 呼び出し(f):
+        """f の本文の呼び出し（中の関数の定義の中は除く）。"""
+        todo = list(ast.iter_child_nodes(f))
+        while todo:
+            n = todo.pop()
+            if isinstance(n, (*関数, ast.Lambda)):
+                continue
+            if isinstance(n, ast.Call):
+                yield n
+            todo.extend(ast.iter_child_nodes(n))
+
+    # 口の鍵 = (形, 名)。形＝メソッド（クラスの中の定義・`x.名(…)` で呼ぶ）か 関数（`名(…)` で呼ぶ）。
+    # 同じ名の別物（芯/計算 から読み込んだ関数の `引く` と 決まり.引く）を取り違えない
+    # 口の鍵 → (名の位置, 名の引数の名, 型の位置か None, 型の引数の名か None)
+    口: dict[tuple[str, str], tuple[int, str, int | None, str | None]] = {}
+    defs = [n for 木 in 木たち for n in ast.walk(木) if isinstance(n, 関数)]
+    メソッド = {id(m) for 木 in 木たち for c in ast.walk(木) if isinstance(c, ast.ClassDef)
+             for m in c.body if isinstance(m, 関数)}
+
+    def 鍵(f) -> tuple[str, str]:
+        return ("メソッド" if id(f) in メソッド else "関数", f.name)
+
+    for f in defs:
+        a = 引数(f)
+        if a[:1] == ["名"] and "型" in a:
+            口[鍵(f)] = (0, "名", a.index("型"), "型")
+    if ("メソッド", "引く") not in 口:
+        raise 引き方が読めない("芯/集計 に 引く(名, 型) の口が見つからない")
+
+    def 渡した(c: ast.Call, 位置: int | None, 名: str | None):
+        if 位置 is None:
+            return None
+        if len(c.args) > 位置:
+            return c.args[位置]
+        return next((k.value for k in c.keywords if k.arg == 名), None)
+
+    別名 = {a.asname: a.name for 木 in 木たち for n in ast.walk(木) if isinstance(n, (ast.Import, ast.ImportFrom))
+          for a in n.names if a.asname}
+
+    def 口の呼び出しか(c) -> tuple[str, str] | None:
+        f = c.func
+        if isinstance(f, ast.Attribute):   # x.名(…)＝メソッドか、モジュール.関数
+            return next((k for k in (("メソッド", f.attr), ("関数", f.attr)) if k in 口), None)
+        if isinstance(f, ast.Name):
+            k = ("関数", 別名.get(f.id, f.id))
+            return k if k in 口 else None
+        return None
+
+    増えた = True
+    while 増えた:   # 包みの包みまで拾う
+        増えた = False
+        for f in defs:
+            if 鍵(f) in 口:
+                continue
+            a = 引数(f)
+            for c in 呼び出し(f):
+                k = 口の呼び出しか(c)
+                if not k:
+                    continue
+                名位置, 名の名, 型位置, 型の名 = 口[k]
+                名 = 渡した(c, 名位置, 名の名)
+                if not (isinstance(名, ast.Name) and 名.id in a):
+                    continue
+                型 = 渡した(c, 型位置, 型の名)
+                if 型 is None or (isinstance(型, ast.Constant) and 型.value is None):
+                    口[鍵(f)] = (a.index(名.id), 名.id, None, None)
+                elif isinstance(型, ast.Name) and 型.id in a:
+                    口[鍵(f)] = (a.index(名.id), 名.id, a.index(型.id), 型.id)
+                else:
+                    raise 引き方が読めない(f"{f.name} が {k[1]} へ渡す型が引数でも None でもない（{ast.unparse(c)}）")
+                増えた = True
+                break
+
+    out: set[str] = set()
+    数えた: set[int] = set()   # 口の呼び出しの名として数えた字の node
+    for f in [None, *defs]:
+        自分 = 口.get(鍵(f)) if f is not None else None
+        for c in (呼び出し(f) if f is not None else
+                  (n for 木 in 木たち for n in 呼び出し(木))):
+            k = 口の呼び出しか(c)
+            if not k:
+                continue
+            名位置, 名の名, 型位置, 型の名 = 口[k]
+            名 = 渡した(c, 名位置, 名の名)
+            if isinstance(名, ast.Constant) and isinstance(名.value, str):
+                数えた.add(id(名))
+                型 = 渡した(c, 型位置, 型の名)
+                if 型 is not None and not (isinstance(型, ast.Constant) and 型.value is None):
+                    out.add(名.value)
+            elif not (自分 and isinstance(名, ast.Name) and 名.id == 自分[1]):
+                raise 引き方が読めない(f"{k[1]} の名が字でない（口の名の引数をそのまま渡す包みの外: {ast.unparse(c)}）")
+    # 閉じた照らし: 見分けの元の名の字は、口の名として数えたか、承知の印を読む所でなければ止める
+    if 名たち is None:
+        from 芯 import 設定
+        名たち = {n for n, e in 設定.表().items() if "集計" in (e.get("読む所") or ()) and e.get("形") in ("選ぶ", "端数の語")}
+    承知の所: set[int] = set()
+    for 木 in 木たち:
+        for c in ast.walk(木):
+            if isinstance(c, ast.Call) and _承知を読む口(c):
+                承知の所 |= {id(x) for x in [*c.args, *(k.value for k in c.keywords)]}
+    for 木 in 木たち:
+        for n in ast.walk(木):
+            if (isinstance(n, ast.Constant) and n.value in 名たち and id(n) not in 数えた and id(n) not in 承知の所):
+                raise 引き方が読めない(f"{n.value} の字が引く口の名でない所にある（{getattr(n, 'lineno', '?')} 行目。"
+                                     "型で引くかが読めない＝引く口で引くか、ここで照らす）")
+    return out
+
+
+def _承知を読む口(c) -> bool:
+    """名の字を受けるが決まりの値を引かない呼び出し: 法の線を下回る線を事務所が承知した印を読む所（`承知か(決, 線)`・
+    `承知の印.読む(…)[0].get(線)`）。決まりの値でなく承知の印の鍵として名を使う＝見分けの元に数えない。"""
+    import ast
+    f = c.func
+    if isinstance(f, ast.Name) and f.id == "承知か" or isinstance(f, ast.Attribute) and f.attr == "承知か":
+        return True
+    return isinstance(f, ast.Attribute) and f.attr == "get" and "承知の印" in ast.unparse(f.value)
 
 
 # 勤務の型ごとに引くが、1 日の数えで効くのは所定が日の法定を超える日だけで、ほかは週・変形の期間で効く決まり。
@@ -239,7 +483,7 @@ _人の決まりの形 = ("選ぶ", "端数の語", "休憩の表")
 
 @lru_cache(maxsize=1)
 def 人で覆う名() -> frozenset:
-    """覆う名のうち、03_マスタ「社員」の列に置いた値も覆う物（人の段に置けて、形が数え方の決まり＝`_人の決まりの形`）。"""
+    """覆う名のうち、2_マスタ「社員」の列に置いた値も覆う物（人の段に置けて、形が数え方の決まり＝`_人の決まりの形`）。"""
     from 芯 import 設定
     return frozenset(n for n in 覆う名() & _人の段の名() if 設定.表().get(n, {}).get("形") in _人の決まりの形)
 
@@ -260,7 +504,7 @@ def _会社の値(段, 会社名: str, タブ: dict, 名: str, 人も: bool = Tr
 
 
 def _人の値たち(段, 会社名: str, タブ: dict, 名: str) -> set[str]:
-    """03_マスタ「社員」のその会社の人の 名 の値（ならした字・空は外す）。"""
+    """2_マスタ「社員」のその会社の人の 名 の値（ならした字・空は外す）。"""
     return {_ならす(r.get(名)) for r in 段.行たち(タブ.get("社員", ()))
             if _字(r.get("会社")) == 会社名 and _字(r.get(名))}
 
@@ -320,11 +564,42 @@ def _照らす一つ(段, 繋, 支給月: str, 会社名: str, タブ: dict, e: 
     return "例と芯の数えが合わない（" + "／".join(違い) + "）" if 違い else None
 
 
-def 確かめる(支給月: str, 会社名: str, タブ: dict, 例, *, 法の線: dict, 段, 繋, 今日: date | None = None) -> dict:
+名簿の列 = ("名", "役目")   # 00_事務所/事務所の設定「確かめてよい人」（初期設定/型.json）
+
+
+def _名の鍵(v) -> str:
+    """名の照らしの鍵: NFKC（全角・半角をそろえる）の後、空白を全部外す（姓と名の間の空白の有無で外さない）。"""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", _字(v)))
+
+
+def 名簿を読む(確かめてよい人) -> tuple[frozenset, str | None]:
+    """事務所の設定「確かめてよい人」の行（get_values の形か dict の並び）→ (名の鍵の集まり, 止めの訳)。
+    渡されない・読めない・名が 1 つも無い時は空の集まりと訳を返す（既定は止める側＝どの例も確かめていない）。"""
+    if 確かめてよい人 is None:
+        return frozenset(), "事務所の設定「確かめてよい人」が渡されない（殻は名簿のタブを読んで渡す）"
+    if isinstance(確かめてよい人, (str, bytes, dict)) or not hasattr(確かめてよい人, "__iter__"):
+        return frozenset(), f"事務所の設定「確かめてよい人」が読めない（行の並びでない: {type(確かめてよい人).__name__}）"
+    try:
+        行 = 行たち(確かめてよい人)
+    except (TypeError, ValueError) as x:
+        return frozenset(), f"事務所の設定「確かめてよい人」が読めない（{x}）"
+    if 行 and any(not isinstance(r, dict) or "名" not in r for r in 行):
+        return frozenset(), "事務所の設定「確かめてよい人」が読めない（列「名」が無い）"
+    名 = frozenset(k for k in (_名の鍵(r.get("名")) for r in 行) if k)
+    if not 名:
+        return frozenset(), "事務所の設定「確かめてよい人」が空（例を確かめてよい事務所の人の名を書く）"
+    return 名, None
+
+
+def 確かめる(支給月: str, 会社名: str, タブ: dict, 例, *, 法の線: dict, 段, 繋, 今日: date | None = None,
+          確かめてよい人=None) -> dict:
     """その会社の例を全部、今のマスタ（タブ）の値で芯に通して照らす。返す物は頭の文のとおり。
 
-    タブ: 段の解決.解く に渡すタブ（月を回す と同じ物）。例: 03_マスタ「例」の行（get_values の形か dict の並び。None は渡されない）。
+    タブ: 段の解決.解く に渡すタブ（月を回す と同じ物）。例: 例の行（`MDから例を読む` が返す並び。get_values の形か dict の並びも
+      受ける。None は渡されない）。
     法の線: 月を回す と同じ法の線。段・繋: 月次 が読み込んだ 段の解決・入口の文脈（同じ物を使う）。今日: 確かめた日の照らし（既定は今日）。
+    確かめてよい人: 00_事務所/事務所の設定「確かめてよい人」の行（get_values の形か dict の並び）。例の 確かめた人 はこの 名 に
+      居なければ通さない（2026-11-18 オーナーの決定）。渡されない・読めない・空なら全部の例を止める（名簿を読む）。
 
     例ごとの照らしの後に、2 つを照らす（2026-11-18 オーナーの決定）:
       覆い: マスタの会社の行と勤務の型に値のある勤務の数え方の決まり（`覆う名`）は全部、どれかの例の 決まり の欄に名が書かれている。
@@ -337,11 +612,14 @@ def 確かめる(支給月: str, 会社名: str, タブ: dict, 例, *, 法の線
     合わない: list[dict] = []
     今日 = 今日 or date.today()
     if 例 is None:
-        return {"通った": False, "数": 0, "合わない": [], "止め": ["03_マスタ「例」が渡されない（殻は例のタブを読んで渡す）"]}
+        return {"通った": False, "数": 0, "合わない": [], "止め": ["例が渡されない（殻は 給与のルール.md の字を 月を回す・賞与を回す の `給与のルール=` で渡す）"]}
     例たち = [e for e in 行たち(例) if _字(e.get("会社")) == 会社名]
     if not 例たち:
         return {"通った": False, "数": 0, "合わない": [],
-                "止め": [f"{会社名} の例が 03_マスタ「例」に 1 つも無い（決まりごとに例を書き、事務所が確かめる）"]}
+                "止め": [f"{会社名} の例が 1 つも無い（給与のルール.md の決まりごとの見出しの下に例の表を書き、事務所が確かめる）"]}
+    名簿, 名簿の止め = 名簿を読む(確かめてよい人)
+    if 名簿の止め:
+        合わない.append({"例の番号": "（名簿）", "決まり": "事務所の設定「確かめてよい人」", "訳": 名簿の止め})
     見た番号 = set()
     書いた名: dict[str, list[dict]] = {}
     for e in 例たち:
@@ -366,7 +644,9 @@ def 確かめる(支給月: str, 会社名: str, タブ: dict, 例, *, 法の線
         for n in 例の決まりの名(e):
             書いた名.setdefault(n, []).append(e)
         if 種類 == "書けない":
-            外れ("マスタに書けない決まり（芯が決まりどおりに数えられない。型の側へ項目を頼むまで止める）")
+            備考 = _字(e.get("備考"))
+            外れ(備考 if 備考.startswith(読めない印) else
+                 "マスタに書けない決まり（芯が決まりどおりに数えられない。型の側へ項目を頼むまで止める）")
             continue
         try:
             日 = _字(e.get("確かめた日"))
@@ -374,6 +654,11 @@ def 確かめる(支給月: str, 会社名: str, タブ: dict, 例, *, 法の線
                 外れ("事務所が確かめた日が無い（例が決まりどおりかを事務所が読んで、確かめた日を書く）")
             elif _読める日(日, "確かめた日") > 今日:
                 外れ(f"確かめた日「{日}」が今日より後")
+            人 = _字(e.get("確かめた人"))
+            if not 人:
+                外れ("確かめた人が空（事務所の設定「確かめてよい人」に居る人が例を読んで、名と確かめた日を書く）")
+            elif not 名簿の止め and _名の鍵(人) not in 名簿:
+                外れ(f"確かめた人「{人}」が事務所の設定「確かめてよい人」に居ない（名簿に居る人が読み直して名と確かめた日を書く）")
             訳 = _照らす一つ(段, 繋, 支給月, 会社名, タブ, e, 法の線)
         except 例の誤り as x:
             外れ(f"例が読めない: {x}")
