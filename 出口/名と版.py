@@ -86,9 +86,12 @@ def 名を付ける(物: str, 会社: str, 支給月: str, 今ある名, 履歴�
     殻は 2 つとも必ず渡す（前の版が無ければ空の並び `[]`）。渡さない（None）時は止める＝前の版を見ずに黙って v1 を付けない
     （2026-11: 前の仕組みで v6 まで出した置き場に v1 を出しかけた）。名の並びでなく 1 つの字を渡した時も止める。"""
     for 何, 並び in (("今ある名（2_出す物/ の名）", 今ある名), ("履歴にある名（9_履歴/ の名）", 履歴にある名)):
-        if 並び is None or isinstance(並び, (str, bytes, dict)):
+        if not isinstance(並び, (list, tuple)):   # None・字・dict・使い切る並び（generator）も止める
             raise ValueError(f"{物}: {何} を名の並びで渡す（前の版が無ければ []）。渡さないと前の版の番号を見られない＝版を付けない"
                              f"（受けた物: {並び!r}）")
+        if any(not isinstance(n, str) for n in 並び):
+            raise ValueError(f"{物}: {何} の中身は名の字だけで渡す（Drive の一覧の dict などは名の字へ直す）。字でない物は版を読めない"
+                             f"＝黙って v1 を付けない（受けた物: {並び!r}）")
     if 物 not in 出す物の置き場:
         raise ValueError(f"物「{物}」は {'・'.join(出す物の置き場)} の外")
     if not str(会社).strip() or str(会社) != str(会社).strip() or re.search(r'[/\\\x00-\x1f]', str(会社)):

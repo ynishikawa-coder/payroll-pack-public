@@ -139,10 +139,29 @@ def 問いの番号を読む(字) -> tuple[str, int] | None:
     return (月, int(m.group(3))) if 月 else None
 
 
+def 格子を行へ(表) -> list[dict]:
+    """列名の dict の並びか、get_values の形（1 行目が見出しの格子）を dict の並びに（読み方の正本・段の解決.行たち もこれを呼ぶ）。"""
+    表 = list(表 or [])
+    if 表 and isinstance(表[0], (list, tuple)):
+        見出し = [str(c) for c in 表[0]]
+        return [{c: (r[i] if i < len(r) else "") for i, c in enumerate(見出し)} for r in 表[1:]]
+    return [dict(r) for r in 表]
+
+
 def 次の問いの番号(行たち, 支給月: str) -> int:
-    """質問と回答の行（既にある行）のうち同じ支給年月の問いの番号の一番大きい順＋1（無ければ 1）。"""
+    """質問と回答の行（既にある行）のうち同じ支給年月の問いの番号の一番大きい順＋1（無ければ 1）。
+    行たちは必ず渡す（行が無ければ空の並び `[]`）。行は列名の dict か、1 行目が見出しの格子（`格子を行へ` で読む）。
+    省く・None・1 つの字・dict・使い切る並び・dict でも格子の行でもない行は止める＝既にある番号を見ずに
+    黙って 01 から振らない（同じ番号は送り直しの行と読まれる。出す物の版の番号〔出口/名と版〕と同じ根・2026-11-19）。"""
+    if not isinstance(行たち, (list, tuple)):   # None・字・dict・使い切る並び（generator）も止める
+        raise ValueError(f"既にある（質問と回答の行）を行の並びで渡す（行が無ければ []）。渡さないと既にある問いの番号を見られない"
+                         f"＝番号を振らない（受けた物: {行たち!r}）")
+    格子 = bool(行たち) and isinstance(行たち[0], (list, tuple))
+    if any(not isinstance(r, (list, tuple) if 格子 else dict) for r in 行たち[1 if 格子 else 0:]):
+        raise ValueError("既にある（質問と回答の行）の行は列名の dict か、1 行目が見出しの格子で渡す")
+    行たち = 格子を行へ(行たち)
     月 = _比べる月(支給月)
-    順たち = [x[1] for r in 行たち or () if (x := 問いの番号を読む((r or {}).get("問いの番号"))) and x[0] == 月]
+    順たち = [x[1] for r in 行たち if (x := 問いの番号を読む((r or {}).get("問いの番号"))) and x[0] == 月]
     return max(順たち, default=0) + 1
 
 

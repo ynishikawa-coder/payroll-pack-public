@@ -56,14 +56,24 @@ def test_番号の形はパックの正本と同じ():
 
 
 def _hook(ev):
+    import contextlib
     import importlib.util
+    import os
     spec = importlib.util.spec_from_file_location("見張りの入口", PLUGIN / "hooks" / "見張り.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     out = io.StringIO()
-    import contextlib
-    with contextlib.redirect_stdout(out):
-        assert m.main(io.StringIO(json.dumps(ev, ensure_ascii=False))) == 0
+    # パックはこの repo を読む（窓の環境の PAYROLL_PACK_DIR が入れた plugin の在り処〔無い所もある〕を指していても結果を変えない）
+    前 = os.environ.get("PAYROLL_PACK_DIR")
+    os.environ["PAYROLL_PACK_DIR"] = str(根)
+    try:
+        with contextlib.redirect_stdout(out):
+            assert m.main(io.StringIO(json.dumps(ev, ensure_ascii=False))) == 0
+    finally:
+        if 前 is None:
+            os.environ.pop("PAYROLL_PACK_DIR", None)
+        else:
+            os.environ["PAYROLL_PACK_DIR"] = 前
     return out.getvalue().strip()
 
 
