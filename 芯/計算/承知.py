@@ -68,6 +68,23 @@ def 読む(値) -> tuple[dict[str, str], list[str]]:
     return out, 訳
 
 
+含める印 = "含める:"   # 最低賃金の印の問いの番号の後ろの（含める:<訳>・…）＝会社が比べる賃金に含める訳（会社の決まり §1.4）
+
+
+def 最低賃金の含める(問い: str | None) -> tuple[str, frozenset[str]]:
+    """`最低賃金` の印の問いの番号の字 → (問いの番号, 含める訳の語)。
+    `問13（含める:家族手当）`・`問13（含める:家族手当・通勤手当）` の形で、最低賃金に算入しない賃金（法の表/法の線.json）のうち
+    会社が比べる賃金に含めて比べる訳を書く。含めるのは法の線の下の比べ方（法 4 条 3 項は会社が含めることを許さない）＝検査 は
+    含めた単価で下回れば赤で仮、含めて届き法の線の単価で下回る時だけ承知した食い違い（法の線の単価と差額を知らせる・§1.4）。
+    含める の無い印（`問13`）は今までどおり、下回っても会社の額で計算する承知。語は空白を外して返す。"""
+    s = str(問い or "").strip()
+    m = re.fullmatch(r"(.*?)[（(]\s*" + re.escape(含める印).replace(":", "[:：]") + r"(.*)[）)]", s)
+    if not m:
+        return s, frozenset()
+    語 = frozenset(re.sub(r"[ 　]", "", w) for w in re.split(r"[・、,，]", m.group(2)) if w.strip())
+    return m.group(1).strip(), 語
+
+
 def _空(v) -> bool:
     return v is None or (isinstance(v, str) and not v.strip())
 

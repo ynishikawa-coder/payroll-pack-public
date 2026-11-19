@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import unicodedata
 from datetime import date, timedelta
 from functools import lru_cache
@@ -32,6 +33,9 @@ from pathlib import Path
 
 例の列 = ("会社", "例の番号", "決まり", "種類", "支給月", "勤務の型", "人の値", "日付", "日の種類", "区間", "期待",
         "確かめた日", "確かめた人", "備考")
+# 書いても書かなくてもよい列（前の例の表・MD の表に無くても読める）。`印` は表 A の印（入口/口.py の 印たち の語を読点で）を
+# 例の日へ渡す＝原本の印で数え方の変わる決まり（定時扱い・早退＝終業前の退勤を延ばさない）を例で確かめる
+任意の列 = ("印",)
 種類たち = ("日", "月", "書けない")
 # 種類＝日 の期待に書ける語のうち、芯/集計 の行でなく 日の要約 から引く語（その日の休憩と労働）
 日の要約の語 = ("休憩", "労働")
@@ -39,6 +43,9 @@ from pathlib import Path
 _日の種類 = ("勤務", "休日勤務", "休暇", "欠勤", "休日")
 _仮の人 = "例"
 _根 = Path(__file__).resolve().parent.parent
+if str(_根) not in sys.path:   # 支給月の字の正本（芯/支給月の字.py）を読む
+    sys.path.insert(0, str(_根))
+from 芯 import 支給月の字  # noqa: E402
 
 
 class 例の誤り(ValueError):
@@ -117,7 +124,7 @@ def 行たち(表) -> list[dict]:
 
 # --- 給与のルール.md の例の表を読む（形の約束: 決まりごとに `### <決まりの名>`・文・その下に例の表） ---
 
-MDの例の列 = tuple(c for c in 例の列 if c != "会社")   # MD の表の列（会社は MDから例を読む の引数で埋める）
+MDの例の列 = tuple(c for c in 例の列 if c != "会社")   # MD の表の列（会社は MDから例を読む の引数で埋める）。任意の列 は在れば読む
 読めない印 = "給与のルール.md の例の表が読めない"   # 読めない表・行は 種類＝書けない の行にし、備考の頭にこの印を置く
 
 
@@ -192,7 +199,7 @@ def MDから例を読む(字: str, 会社: str) -> list[dict]:
             読めない(始め + 1, "表の 2 行目が見出しと同じ数の区切り（|---|）でない")
             continue
         欠け = [c for c in MDの例の列 if c not in 頭]
-        外 = [c for c in 頭 if c not in MDの例の列]
+        外 = [c for c in 頭 if c not in MDの例の列 + 任意の列]
         二つ = sorted({c for c in 頭 if 頭.count(c) > 1})
         if 欠け or 外 or 二つ:
             訳 = "／".join(x for x in (f"無い列: {'・'.join(欠け)}" if 欠け else "", f"外の列: {'・'.join(外)}" if 外 else "",
@@ -207,16 +214,16 @@ def MDから例を読む(字: str, 会社: str) -> list[dict]:
                 continue
             r = dict(zip(頭, 升))
             r["決まり"] = f"給与のルール.md#{見出し}（{r['決まり']}）" if r["決まり"] else f"給与のルール.md#{見出し}"
-            out.append({"会社": 会社, **{c: r[c] for c in MDの例の列}})
+            out.append({"会社": 会社, **{c: r[c] for c in MDの例の列}, **{c: r[c] for c in 任意の列 if c in r}})
     return out
 
 
 def _月(支給月: str) -> str:
-    """`YYYY.MM支給` → `YYYY-MM`。"""
-    m = re.match(r"^(\d{4})[.\-](\d{2})", _字(支給月))
-    if not m:
+    """例の 支給月 の字 → パックの中の字 `YYYY-MM`（字は正本 芯/支給月の字.py が組む）。読めなければ 例の誤り。"""
+    x = 支給月の字.そろえる(支給月, "中")
+    if x is None:
         raise 例の誤り(f"支給月「{支給月}」は YYYY.MM支給 でない")
-    return f"{m.group(1)}-{m.group(2)}"
+    return x
 
 
 def _例の人を足す(段, 会社名: str, タブ: dict, 例: dict) -> tuple[str, dict]:
@@ -247,6 +254,18 @@ def _日の種類と休暇(字: str) -> tuple[str, dict]:
     return 種, dict(zip(_休暇の列, 中))
 
 
+def _印(字: str) -> str:
+    """例の 印 `早退`・`定時扱い、手で直した`（表 A の印の字のまま・読点で）→ 表 A の 印 の字。知らない語は 例の誤り。"""
+    from 入口.口 import 印たち
+    from 月次.台帳の形 import 始業から扱い   # 問いの答えでだけ置く印（確定した勤怠の印）も例には書ける
+    書ける = (*印たち, 始業から扱い)
+    語 = [w.strip() for w in re.split(r"[、,]", 字 or "") if w.strip()]
+    外 = [w for w in 語 if w not in 書ける]
+    if 外:
+        raise 例の誤り(f"印「{'・'.join(外)}」は表 A の印（{'・'.join(書ける)}）のどれでもない")
+    return "、".join(語)
+
+
 def _日の例を数える(段, 支給月: str, 会社名: str, タブ: dict, 例: dict, 法の線: dict) -> dict:
     """種類＝日 の例 1 つを、今のマスタの値で芯/集計に通す → {語: 値}（集計の行と、その日の 休憩・労働）。"""
     from 芯.集計 import 集計する
@@ -265,7 +284,7 @@ def _日の例を数える(段, 支給月: str, 会社名: str, タブ: dict, �
     月 = _月(支給月)
     鍵 = {"支給月": 月, "会社": 会社名, "NO": NO, "勤怠の表記": NO}
     A = [{**鍵, "日付": 日付, "日の種類": 種, **休, "勤務の型": 型, "原本の名前": "例", "原本の種別": "Excel出勤簿",
-          "読み取りの確かめ": "確認済"}]
+          "読み取りの確かめ": "確認済", "印": _印(_字(例.get("印")))}]
     B = [{**鍵, "日付": 日付, "区間の番号": i, "区間の種別": 種別, "始め": 始, "終わり": 終, "時刻の出所": "打刻"}
          for i, (種別, 始, 終) in enumerate(_区間(_字(例.get("区間"))), 1)]
     # 例の日の前の 7 日は休みの日として前の表 A に置く（例の日だけで週を判定できる＝前の期間の日を受けていない仮にしない。

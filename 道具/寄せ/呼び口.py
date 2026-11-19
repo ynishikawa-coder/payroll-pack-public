@@ -74,8 +74,8 @@ def main(argv=None) -> int:
         rc = 1 if any(x["寄せられない物"] for x in r["見通し"]) else 0
     elif a.する == "見回り":
         r = 見回りの口.見回り([読む(p) for p in a.会社たち], 直したち, 当てる.型を読む(型)["版"], 今日, a.窓,
-                         前の答え=読む(a.前の答え) if a.前の答え else None)
-        rc = 0
+                         前の答え=読む(a.前の答え) if a.前の答え else None, 型=型)
+        rc = 0   # 赤（書き方のずれ・置き場の検査）は r["赤"] で返す（終わりの値は前と同じ 0）
     else:
         r = 検査.全部(型, 直したち, 当てる.型を開く(a.前の型) if a.前の型 else None)
         rc = 1 if any(r.values()) else 0

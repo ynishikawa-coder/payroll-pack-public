@@ -152,6 +152,56 @@ def test_hookは名を引く命令で引いて止め_読めない入力と引け
     assert _hook(json.dumps({"tool_name": "Read", "tool_input": {}}), PAYROLL_PACK_DIR=str(tmp_path)).stdout == ""
 
 
+置き換えの通す文 = [
+    "python3 - <<EOF\ns = 'xa'\nprint(s.replace('a','b'))\nEOF",
+    "echo replace",
+    "echo replace s3",
+    "python3 x/作り物_upload.py list && echo replace s3",       # 命令の名の直後でない replace は見ない
+    "grep -n replace x/作り物_upload.py",
+    "python3 - <<EOF\nprint(\"it's\".replace('a','b'))\nEOF",          # 分けられても命令の名が無い
+]
+置き換えの止める文 = [
+    "作り物_upload.py replace s3 a.csv",
+    "python3 /x/作り物_upload.py replace s3 a.csv",
+    "a && 作り物_upload.py replace s3 a.csv",
+    "a;作り物_upload.py replace s3",
+    "python3 x/作り物_upload.py --yes replace s3 a.csv",          # 旗を挟んでも見る
+    "python3 x/作り物_upload.py replace",                          # 置き換える先が無い＝見分けられない
+    "python3 x/作り物_upload.py --profile p replace s3",           # 値を取る旗を挟む
+    "bash -c 'python3 x/作り物_upload.py replace s3'",             # 引用の中の命令
+    "sh -c \"cd x && 作り物_upload.py replace s3\"",
+    "作り物_upload.py re\\place s3",                               # \\ で字を割る
+    "作り物_upload.py 're'place s3",                               # 引用で字を割る
+    "python3 - <<EOF\nimport os\nos.system('作り物_upload.py replace s3')\nEOF",
+    "python3 -c \"run(['作り物_upload.py','replace','s3'])\"",    # 分け直しても見分けられない字
+    "bash -c '作り物_upload.py re\\place s3'",                       # 引用の中で \\ や引用で字を割る
+    "bash -c \"作り物_upload.py 're'place s3\"",
+    "bash -c '作り物_up\"load\".py replace s3'",
+]
+
+
+def test_Bashはreplaceの字でなく置き換える命令の名の直後のreplaceだけで止め_分けられない文は止める():
+    """注入: python の str.replace を含む heredoc・echo replace（通す）と、命令の名の直後の replace を色々な打ち方で（止める）。"""
+    for c in 置き換えの通す文:
+        assert j("Bash", command=c) is None, c
+    for c in 置き換えの止める文:
+        assert j("Bash", command=c), c
+    assert j("Bash", command="python3 x/作り物_upload.py replace m1 a.csv") is None    # 出す物でない本は通す
+    assert j("Bash", command="echo 'replace 作り物_upload.py") and "分けられない" in j("Bash", command="echo 'replace 作り物_upload.py")
+    assert W.判定("Bash", {"command": "作り物_upload.py replace s3"}, 口(置き換える命令=())) is None   # 殻が命令を渡さない
+
+
+def test_hookはパックの場所が無い時も同じ見分けでBashを止める(tmp_path):
+    env = dict(PAYROLL_PACK_DIR=str(tmp_path), PAYROLL_GUARD_REPLACE_CMDS="作り物_upload.py、ほか.py")
+    def bash(c):
+        return _hook(json.dumps({"tool_name": "Bash", "tool_input": {"command": c}}), **env).stdout
+    for c in 置き換えの通す文:
+        assert bash(c) == "", c
+    for c in 置き換えの止める文 + ["x/ほか.py replace s1", "echo 'replace 作り物_upload.py"]:
+        assert '"deny"' in bash(c), c
+    assert '"deny"' in _hook(json.dumps({"tool_name": "mcp__x__update_values", "tool_input": {}}), **env).stdout   # 書く道具は今どおり止める
+
+
 def test_hooksの登録の形は土台のpluginと同じ形で入口を指す():
     h = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     cmds = [x["command"] for e in h["hooks"]["PreToolUse"] for x in e["hooks"]]

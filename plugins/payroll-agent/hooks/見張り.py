@@ -7,7 +7,8 @@
                               `<命令> 見出し <id> <タブ>` → JSON の 1 行目。0 でない終わり＝引けない（止める側）
   PAYROLL_SHIP_MARK           出荷の口が置いた本の印（appProperties の鍵）。無ければ名の頭だけで見る
   PAYROLL_GUARD_REPLACE_CMDS  Bash で `<命令> replace <id>` と打つと Drive の本を置き換える命令の名（読点か , 区切り）
-入力が読めない・パックの場所が分からない時、見る道具なら止める（見分けられない＝止める側）。見ない道具は何もしない。
+入力が読めない・パックの場所が分からない時、見る道具なら止める（見分けられない＝止める側）。ただし Bash は判定と同じ見分け
+（置き換える命令の名の後の引数に replace・分けられない文）の時だけ止める。見ない道具は何もしない。
 """
 from __future__ import annotations
 
@@ -38,13 +39,17 @@ def _引く(*args: str):
     return json.loads(r.stdout)
 
 
+def _置き換える命令() -> tuple[str, ...]:
+    return tuple(x.strip() for x in re.split(r"[,、]", os.environ.get("PAYROLL_GUARD_REPLACE_CMDS", "")) if x.strip())
+
+
 def 口を組む(パック: Path) -> 見張り.口:
     return 見張り.口(
         名の頭たち=場所.名の頭たち(パック),
         名を引く=lambda fid: _引く("名", fid),
         見出しを引く=lambda sid, tab: _引く("見出し", sid, tab),
         印=os.environ.get("PAYROLL_SHIP_MARK", ""),
-        置き換える命令=tuple(x.strip() for x in re.split(r"[,、]", os.environ.get("PAYROLL_GUARD_REPLACE_CMDS", "")) if x.strip()),
+        置き換える命令=_置き換える命令(),
         確認ページの形=場所.確認ページの名の形(パック),
     )
 
@@ -67,8 +72,12 @@ def main(stdin=None) -> int:
         return 0
     パック = 場所.探す()
     if パック is None:
-        if tool == "Bash" and "replace" not in str((ev.get("tool_input") or {}).get("command", "")):
-            return 0
+        if tool == "Bash":   # 判定と同じ見分け（置き換える命令の名の直後が replace の時・分けられない文）だけ止める
+            try:
+                if not 見張り.置き換える先たち(str((ev.get("tool_input") or {}).get("command", "")), _置き換える命令()):
+                    return 0
+            except ValueError:
+                pass
         _拒む("給与の見張り: パックの場所が分からない（環境 PAYROLL_PACK_DIR）＝出す物の名の形を読めないので書く道具を止めた")
         return 0
     try:

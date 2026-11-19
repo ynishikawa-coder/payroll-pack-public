@@ -16,6 +16,7 @@ from pathlib import Path
 if str(根) not in sys.path:
     sys.path.insert(0, str(根))
 
+from 芯 import 支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
 from 芯.計算 import 引く口  # noqa: E402  (法の表を引く口は 1 つ)
 from 芯.計算.形 import 区分を読む  # noqa: E402
 
@@ -182,10 +183,13 @@ class 止める(Exception):
 決まりで分かれる休業 = ("休職",)   # 業務上の傷病の休業なら出勤とみなす・私傷病なら会社の決まり
 
 
-def _月(s) -> str:
-    """`YYYY.MM支給`・`YYYY-MM` → `YYYY-MM`（比べるためだけ）。"""
-    m = re.match(r"\s*(\d{4})[.\-/](\d{1,2})", str(s or ""))
-    return f"{m.group(1)}-{int(m.group(2)):02d}" if m else str(s or "")
+def _月(s, どこ: str) -> str:
+    """支給月の字（`YYYY.MM支給`・`YYYY-MM` など）→ `YYYY-MM`（比べるためだけ・正本 芯/支給月の字.py）。
+    読めない字は止める（黙ってその月の取得から外さない）。"""
+    x = 支給月の字.そろえる(s, "中")
+    if x is None:
+        raise ValueError(f"{どこ}の支給月「{'' if s is None else str(s).strip()}」が読めない（YYYY.MM支給 か YYYY-MM）")
+    return x
 
 
 def 台帳を読む(行たち) -> dict:
@@ -402,7 +406,7 @@ def 一人(p: dict, 入力: dict, 表: dict, 置き場=None, 台帳: dict | None
     生き = [g for g in 付与たち if g["付与日"] <= 基準 <= g["時効"]]
     今 = 生き[-1] if 生き else None
     前 = 生き[-2] if len(生き) > 1 else None
-    今月 = [(d, n) for d, n, pm in 取得 if _月(pm) == _月(支給月)]
+    今月 = [(d, n) for d, n, pm in 取得 if _月(pm, f"台帳 {d} の行") == _月(支給月, "管理表")]
     行 = {"会社": 会社, "支給月": 支給月, "NO": p["NO"], "氏名": p.get("氏名", "")}
     if 今:
         年の終わり = 月を足す(今["付与日"], 12) - dt.timedelta(days=1)

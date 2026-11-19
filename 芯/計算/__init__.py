@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
+from 芯 import 支給月の字
+
 from . import 要る値
 from . import 承知 as 承知の印
 from .引く口 import 欠け, 引く, 引いた, 表の誤り
@@ -169,7 +171,7 @@ def 賞与を計算する(賞与, *, 支給日: str, 決まり: dict | None = No
     from datetime import date
     決まり, 人の値 = 決まり or {}, 人 or {}
     日 = date.fromisoformat(支給日)
-    支給月 = f"{支給日[:7]}-賞与"
+    支給月 = 支給月の字.字にする(日.year, 日.month, "中", 賞与=True)
     行 = {(str(r["会社"]), str(r["NO"])): r for r in 賞与}
     前月の理由 = 理由("前月の課税対象額が渡されていない", "前月の給与なし", "月額表で計算（÷・× の月数は 法の表/源泉_賞与の月額表の月数）",
                   "前月の 計算する の課税対象額を渡す")

@@ -95,9 +95,10 @@ def _束の指紋(行たち) -> str:
     return _指紋([[f"{k}={v}" for k, v in r] for r in 束])
 
 
-def _月の字(v) -> str:
-    m = re.match(r"\s*(\d{4})[.\-](\d{2})", _字(v))
-    return f"{m.group(1)}-{m.group(2)}" if m else _字(v)
+def _中の月(v) -> str | None:
+    """支給月の字（殻 `YYYY.MM支給`・出口 `YYYY-MM`／`YYYY-MM-賞与` など）→ 比べる月 `YYYY-MM`（正本 芯/支給月の字.py）。読めなければ None。"""
+    from 芯 import 支給月の字
+    return 支給月の字.そろえる(_字(v).removesuffix("-賞与"), "中")
 
 
 def _マスタのタブ() -> tuple[str, ...]:
@@ -165,8 +166,11 @@ def 入力の指紋(入力: dict, *, 会社: str, 支給月: str, 回: str) -> d
         elif k in 添える名:
             out[k] = _指紋([_束の指紋(その会社(_行たち(v))), _束の指紋(その会社(_行たち(入力[添える名[k]] or ())))])
         elif k in ("その月だけの指示", "人ごとの月の数字"):
-            月 = _月の字(支給月)
-            out[k] = _束の指紋([r for r in その会社(_行たち(v)) if _月の字(r.get("支給月")) == 月])
+            # その月の行と、月の読めない行（その月の行かもしれない＝束に入れ、書き換えれば指紋が変わる。黙って外さない）
+            月 = _中の月(支給月)
+            if 月 is None:
+                raise ValueError(f"証明の支給月「{_字(支給月)}」が読めない（YYYY-MM か YYYY-MM-賞与）")
+            out[k] = _束の指紋([r for r in その会社(_行たち(v)) if _中の月(r.get("支給月")) in (月, None)])
         elif k in ("月の数字", "支給一覧"):
             out[k] = _束の指紋(その会社(_行たち(v)))
         elif k in ("有給の値", "法の線", "賞与の引数"):
