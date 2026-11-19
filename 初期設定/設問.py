@@ -1165,7 +1165,7 @@ def まとめる(種たち, *, 会社: str, 支給月: str, 今日: str, 次の�
             if w and "（補足に" not in w and w not in 変わる and w not in _決まった語の変わる事:
                 変わる[w] = f"「{w}」で計算します"
         row = {
-            "会社": s.get("会社") or 会社, "問いの番号": 口.問いの番号(月, 番号), "支給月": f"{月[:4]}.{月[5:7]}支給",
+            "会社": s.get("会社") or 会社, "問いの番号": 口.問いの番号(月, 番号), "支給月": 段.月(月, "殻"),
             "聞いた日": 今日, "誰が聞いた": 誰が聞いた, "誰に": s.get("誰に", "先方"),
             "何が無いか": 何, "質問": 質問.replace("\n", " "),
             # 見当は計算の置き値として残す。拠り所が見込みでない時は 見当の拠り所 をその字のまま（確認ページは見込みに出さない）
@@ -1295,6 +1295,15 @@ def 質問の表の訳(質問の行たち) -> str:
     return ""
 
 
+# 問いを閉じた行の回答の頭（`出し直し→<新しい番号>`＝別の問いへ移した・`取り下げ→<訳>`＝問いを下げた）。答えでない＝反映先を照らさない。
+# 出し直し の字の正本は 確認ページ/前の答え.py（答え済みの読みと同じ）
+閉じた頭 = (前の答え.出し直し, "取り下げ")
+
+
+def 閉じた答え(回答) -> bool:
+    return str(回答 or "").strip().startswith(閉じた頭)
+
+
 def 反映の照らし(質問の行たち, タブ: dict, 会社: str, *, md: dict | None = None, 支給月: str | None = None, 置き場=None,
              台帳: dict | None = None) -> dict:
     """答えのある問いの 反映先 が、効く設定まで埋まったかの一覧。
@@ -1304,7 +1313,10 @@ def 反映の照らし(質問の行たち, タブ: dict, 会社: str, *, md: dic
     その月だけの指示}（列名の dict の並びか get_values の形）。返す物: 行たち（{問いの番号, 反映先, 状態, 訳}）・赤（埋まっていない・
     答えと値が違う・前の答えと食い違う・反映済みの欄が読めない／済なのに埋まっていない）・問い（前の答えと食い違う組＝担当者に聞き直す）。
     同じ問いの番号の行が幾つもあれば一番下の行（送り直しの答え）を見る。答えが決まり切らない問い（分からない・不明・確かめる など
-    ＝正本は 確認ページ/前の答え.py）はまだ答えの無い問いと同じに見る。
+    ＝正本は 確認ページ/前の答え.py）はまだ答えの無い問いと同じに見る。問いを閉じた行（`出し直し→`・`取り下げ→`）は照らさない。
+    md の節は `<名>#<見出し>` の見出しの行から、同じか上の段の次の見出しまで（下の段の `###` も節の中）。
+    確定した勤怠の先は、答えが読んだままの勤怠と同じ事実を言う日（答えで事実が変わらない＝確定した勤怠に書く行が無い）なら
+    `埋まった`（訳 読んだまま＝答えどおり）。台帳 に 読んだままの勤怠（と区間）を渡した時だけ見る。
     状態: 埋まった／空／答えと値が違う／承知の印が無い／まだ法の線を下回る／反映先が無い／前の答えと食い違う／反映済みが読めない／
     反映済みなのに埋まっていない／台帳が無い（台帳の先なのに台帳を渡されていない）／見ていない（md を渡されていない）。"""
     訳 = 質問の表の訳(質問の行たち)
@@ -1318,7 +1330,7 @@ def 反映の照らし(質問の行たち, タブ: dict, 会社: str, *, md: dic
     答えた = []
     for q in 口.今の問いの行たち(段.行たち(質問の行たち)):
         回答 = 口.答えの芯(q.get("回答"))
-        if not 回答 or 前の答え.決まり切らない(回答) or str(q.get("会社", 会社)).strip() not in ("", 会社):
+        if not 回答 or 前の答え.決まり切らない(回答) or 閉じた答え(回答) or str(q.get("会社", 会社)).strip() not in ("", 会社):
             continue
         答えた.append(q)
         番号 = str(q.get("問いの番号", "")).strip()
@@ -1378,7 +1390,7 @@ def 反映の照らし(質問の行たち, タブ: dict, 会社: str, *, md: dic
     return {"行たち": 行たち, "赤": 赤, "問い": 食い違い}
 
 
-def _台帳の先(先: str, q: dict, 台帳: dict | None, 会社: str) -> tuple[str, str]:
+def _台帳の先(先: str, q: dict, 台帳: dict | None, 会社: str, タブ: dict | None = None) -> tuple[str, str]:
     """確定した勤怠（とその区間）の 直した訳 に `問い:<番号>` の行、その月だけの指示に 問いの番号 の行があれば埋まった。
     答えで変わる項目と人 に NO があれば、その NO ごとに行が要る。台帳を渡されていなければ照らせない＝赤（黙って見ていないにしない）。"""
     番号 = str(q.get("問いの番号", "")).strip()
@@ -1394,16 +1406,115 @@ def _台帳の先(先: str, q: dict, 台帳: dict | None, 会社: str) -> tuple[
         当たる = [r for r in rows if str(r.get("問いの番号", "")).strip() == 番号]
         どこ = f"問いの番号 {番号}"
     無い人 = sorted(n for n in _人たち(q) if not any(str(r.get("NO", "")).strip() == n for r in 当たる))
+    if not 当たる and 先 == 確定した勤怠の先 and _読んだまま答えどおり(q, 台帳, 会社, タブ):
+        return "埋まった", "読んだまま＝答えどおり（答えで事実が変わらない日＝確定した勤怠に書く行が無い）"
     if not 当たる or 無い人:
         return "空", f"{タブ名} に {どこ} の行が無い" + (f"（NO {'、'.join(無い人)}）" if 当たる else "")
     return "埋まった", ""
+
+
+_入口の文脈 = None
+
+
+def _文脈の口():
+    global _入口の文脈
+    if _入口の文脈 is None:
+        _入口の文脈 = _読み込む("設問_入口の文脈", ここ / "入口の文脈.py")
+    return _入口の文脈
+
+
+def _対象の日付(対象: str, 始め: str, 終わり: str) -> list[str]:
+    """対象 の字の日（YYYY-MM-DD・M/D・M 月 D 日）→ 期間の中の日付。"""
+    import unicodedata
+    字 = unicodedata.normalize("NFKC", str(対象 or ""))
+    字 = re.sub(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", r"\1/\2/\3", 字)
+    字 = re.sub(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", r"\1/\2", 字)
+    return _文脈の口()._答えの日付(字, 始め, 終わり)[0]
+
+
+def _読んだまま答えどおり(q: dict, 台帳: dict, 会社: str, タブ: dict | None) -> bool:
+    """確定した勤怠の先の答えが、読んだままの勤怠（1 次）の事実と同じ事を言う（答えで事実が変わらない）か。
+    人＝答えで変わる項目と人 の NO か 対象 の人・日＝答えの M/D か 対象 の日。どの人・日も、1 次と確定した勤怠の行（と区間）が
+    事実の列で同じで直した訳が空、かつ答えの列・時刻が 1 次の値と同じ（読んだとおり の答えは、その問いの理由が 1 次の要確認に無い）
+    時だけ True。人・日が決まらない・答えが読めない・台帳に 1 次が無い時は False（照らしの赤のまま）。"""
+    from 月次 import 勤怠の照らし as 照
+    文 = _文脈の口()
+    一次 = _その会社(台帳.get("読んだままの勤怠"), 会社)
+    if not 一次:
+        return False
+    月 = 段.月にそろえる(q.get("支給月"))
+    一次 = [r for r in 一次 if 段.月にそろえる(r.get("支給月")) == 月]
+    日付たち = sorted(str(r.get("日付", "")).strip() for r in 一次 if str(r.get("日付", "")).strip())
+    if not 日付たち:
+        return False
+    try:
+        読み, _ = 文.日の答え(会社, str(q.get("支給月", "")), [{**q, "会社": 会社}], 日付たち[0], 日付たち[-1],
+                         社員=(タブ or {}).get("社員", ()))
+    except (ValueError, KeyError):
+        return False
+    if not 読み:
+        return False
+    事実 = [c for c in 照.日の列 if c not in 照.比べない列]
+    区間の事実 = [c for c in 照.区間の列 if c not in 照.比べない列]
+    二次 = [r for r in _その会社(台帳.get("確定した勤怠"), 会社) if 段.月にそろえる(r.get("支給月")) == 月]
+    間1 = [r for r in _その会社(台帳.get("読んだままの勤怠の区間"), 会社) if 段.月にそろえる(r.get("支給月")) == 月]
+    間2 = [r for r in _その会社(台帳.get("確定した勤怠の区間"), 会社) if 段.月にそろえる(r.get("支給月")) == 月]
+
+    def 字(v) -> str:
+        return str(v if v is not None else "").strip()
+
+    def 時刻の字(v) -> str:
+        m = re.fullmatch(r"(\d{1,2})[:：](\d{2})", 字(v))
+        return f"{int(m.group(1))}:{m.group(2)}" if m else 字(v)
+
+    欄の列 = {"出": "出勤の時刻", "退": "退勤の時刻"}
+    for NO, 答えたち in 読み.items():
+        for x in 答えたち:
+            日たち = x.get("日付") or _対象の日付(q.get("対象"), 日付たち[0], 日付たち[-1])
+            if not 日たち:
+                return False
+            for d in 日たち:
+                r1 = [r for r in 一次 if 字(r.get("NO")) == NO and 字(r.get("日付")) == d]
+                r2 = [r for r in 二次 if 字(r.get("NO")) == NO and 字(r.get("日付")) == d]
+                if len(r1) != 1 or len(r2) != 1 or 字(r2[0].get(照.訳の列)):
+                    return False
+                if any(字(r1[0].get(c)) != 字(r2[0].get(c)) for c in 事実):
+                    return False
+                b1 = sorted(tuple(字(r.get(c)) for c in 区間の事実) for r in 間1 if 字(r.get("NO")) == NO and 字(r.get("日付")) == d)
+                b2 = [r for r in 間2 if 字(r.get("NO")) == NO and 字(r.get("日付")) == d]
+                if b1 != sorted(tuple(字(r.get(c)) for c in 区間の事実) for r in b2) or any(字(r.get(照.訳の列)) for r in b2):
+                    return False
+                if x.get("列"):
+                    if any(字(r1[0].get(c)) != 字(v) for c, v in x["列"].items()):
+                        return False
+                elif x.get("時刻"):
+                    if any(欄 not in 欄の列 or 時刻の字(r1[0].get(欄の列[欄])) != 時刻の字(v) for 欄, v in x["時刻"].items()):
+                        return False
+                elif x.get("種類") in ("時刻", "長さ"):   # 読んだとおり・書いてある時刻で数える＝1 次にその理由の要確認が無い時だけ同じ
+                    理由 = [w.strip() for w in re.split(r"[、\n]", 字(r1[0].get("要確認の理由"))) if w.strip()]
+                    if any(読みの型(w) == x.get("何が無いか") for w in 理由):
+                        return False
+                else:
+                    return False
+    return True
+
+
+def md_の節(本文: str, 見出し: str) -> str:
+    """md の字の `#… <見出し>` の節の本文＝見出しの次の行から、同じか上の段（# の数が同じか少ない）の次の見出しの前まで。
+    下の段の見出し（`## NO…` の下の `###`）は節の中。見出しが無ければ ''。"""
+    m = re.search(rf"^(#+)\s*{re.escape(見出し)}\s*$", 本文 or "", re.M)
+    if not m:
+        return ""
+    残り = 本文[m.end():]
+    e = re.search(rf"^#{{1,{len(m.group(1))}}}(?!#)", 残り, re.M)
+    return 残り[:e.start()] if e else 残り
 
 
 def _一つの先(先: str, q: dict, 回答: str, タブ: dict, 会社: str, 会値: dict, md: dict, 台帳: dict | None = None) -> tuple[str, str]:
     if 先 == 確定した勤怠の先 and 回答 == "原本を送る":
         return "見ていない", "直した原本を待つ（読んだままの勤怠を作り直してから確定した勤怠へ書く）"
     if 先 in 台帳の先たち:
-        return _台帳の先(先, q, 台帳, 会社)
+        return _台帳の先(先, q, 台帳, 会社, タブ)
     if 先.startswith("台帳/"):   # 畳んだタブ（月の変動・人ごと・勤怠 など）・型に無いタブ＝答えが計算に届かない（黙って見ていないにしない）
         return "知らない台帳の先", f"年の台帳の答えの先は {'・'.join(台帳の先たち)} だけ（型の版 27）"
     if 先 == 原本の先:
@@ -1414,8 +1525,7 @@ def _一つの先(先: str, q: dict, 回答: str, タブ: dict, 会社: str, 会
             return "見ていない", "md を渡されていない"
         本文 = md[名]
         if 見出し:
-            m = re.search(rf"^#+\s*{re.escape(見出し)}\s*$(.*?)(?=^#|\Z)", 本文, re.M | re.S)
-            本文 = m.group(1) if m else ""
+            本文 = md_の節(本文, 見出し)
         番号 = str(q.get("問いの番号", "")).strip()
         return ("埋まった", "") if 番号 and 番号 in 本文 else ("空", f"{先} に 出所 {番号} の行が無い")
     部 = 先.split("/")
@@ -1436,16 +1546,28 @@ def _一つの先(先: str, q: dict, 回答: str, タブ: dict, 会社: str, 会
         鍵 = "型の名" if タブ名 == "勤務の型" else "NO"
         rows = _その会社(タブ.get(タブ名, ()), 会社)
         当たる = [r for r in rows if str(r.get(鍵)) in 誰] or rows
-        空の行 = [str(r.get(鍵)) for r in 当たる if _空(r.get(名))]
-        if not 当たる or 空の行:
-            if not 当たる or len(空の行) == len(当たる):
-                if 名 in 会値:   # 会社の段で置いた
-                    return _値を照らす(名, 会値[名], q, 回答)
-            return "空", f"{タブ名} の {名} が空（{'、'.join(空の行) or '行が無い'}）"
+        if not 当たる:
+            if 名 in 会値:   # 会社の段で置いた
+                return _値を照らす(名, 会値[名], q, 回答)
+            return "空", f"{タブ名} の {名} が空（行が無い）"
+        # 人（型）の値が空の行は、その人の勤務の型の段・会社の段で照らす（段の解決と同じ下の段から上の段へ。一部の人だけに
+        # 人の値がある時も、値の無い人を上の段で見る）
+        型の行 = {str(r.get("型の名")): r for r in _その会社(タブ.get("勤務の型", ()), 会社)}
+        空の行 = []
         for r in 当たる:
-            s = _値を照らす(名, r.get(名), q, 回答)
+            v = r.get(名)
+            if _空(v) and タブ名 == "社員":
+                v = 型の行.get(str(r.get("勤務の型")), {}).get(名)
+            if _空(v) and 名 in 会値:
+                v = 会値[名]
+            if _空(v):
+                空の行.append(str(r.get(鍵)))
+                continue
+            s = _値を照らす(名, v, q, 回答)
             if s[0] != "埋まった":
                 return s
+        if 空の行:
+            return "空", f"{タブ名} の {名} が空（{'、'.join(空の行)}）"
         return "埋まった", ""
     if タブ名 in ("支給控除の項目", "人ごとの支給控除"):
         rows = _その会社(タブ.get(タブ名, ()), 会社)

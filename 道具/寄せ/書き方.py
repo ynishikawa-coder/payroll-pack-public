@@ -33,8 +33,8 @@ def _字(v) -> str:
 
 
 def 支給月の字(v) -> str | None:
-    m = 段.月にそろえる(v)
-    return None if m is None else m + "支給"
+    """支給月の字 → 型の書き方 `YYYY.MM支給`（字は正本 芯/支給月の字.py が組む・段の解決 と同じ読み）。読めなければ None。"""
+    return 段.支給月の字.そろえる(v, "殻")
 
 
 def 日付の字(v) -> str | None:

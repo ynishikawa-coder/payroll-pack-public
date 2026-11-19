@@ -9,6 +9,8 @@ from __future__ import annotations
 import calendar
 from datetime import date, timedelta
 
+from 芯 import 支給月の字
+
 from . import 引く口 as 口
 
 曜日 = "月火水木金土日"
@@ -32,8 +34,11 @@ def 日にする(年: int, 月: int, 日) -> date:
 
 
 def 支給月を読む(支給月: str) -> tuple[int, int]:
-    y, m = str(支給月)[:7].split("-")
-    return int(y), int(m)
+    """パックの中の支給月の字 `YYYY-MM`（賞与は `YYYY-MM-賞与`）→ (年, 月)。読み方は正本 芯/支給月の字.py。ほかの字は止める。"""
+    s = str(支給月).removesuffix("-賞与")
+    if not 支給月の字.その形か(s, "中"):
+        raise ValueError(f"支給月 {支給月!r} は YYYY-MM か YYYY-MM-賞与 でない")
+    return 支給月の字.読む(s)
 
 
 def 期間(支給月: str, 締め日, 支給の月) -> tuple[date, date]:

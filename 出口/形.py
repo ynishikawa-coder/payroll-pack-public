@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -101,10 +102,16 @@ def 欄の組たち(欄の対応) -> tuple[欄の組, ...]:
 つなぎの印 = {"欄.": (True, True), "渡す.": (True, False), "受ける.": (False, True)}
 
 
-def _月の字(v) -> str:
-    import re
-    m = re.match(r"\s*(\d{4})\D?(\d{1,2})", str(v or ""))
-    return f"{m.group(1)}.{int(m.group(2)):02d}" if m else ""
+def _比べる月(v, どこ: str) -> str:
+    """支給月の字 → 比べる字 `YYYY.MM`（正本 芯/支給月の字.py）。空は ""（適用開始の無い行）。読めない字は止める
+    （黙って「適用開始の無い行」と読んで、まだ効かない欄を出さない）。"""
+    from 芯 import 支給月の字
+    if v is None or not str(v).strip():
+        return ""
+    x = 支給月の字.そろえる(v, "比べる")
+    if x is None:
+        raise ValueError(f"{どこ}「{str(v).strip()}」が支給月の字として読めない（YYYY.MM支給）")
+    return x
 
 
 def 欄の対応を組む(会社: str, 道具: str | None = None, 支給控除の項目=(), つなぎ=(), 支給月: str | None = None) -> list[dict]:
@@ -115,12 +122,12 @@ def 欄の対応を組む(会社: str, 道具: str | None = None, 支給控除�
     同じ項目が 2 つの欄に出たら止まる（対応にする）。同じ欄に幾つかの項目なら足す。"""
     from 芯.集計.形 import 出す語
     単位 = {k: v for k, v in 出す語 if v in 値の形たち}
-    月 = _月の字(支給月) if 支給月 else ""
+    月 = _比べる月(支給月, "支給月")
     新しい: dict[str, tuple[str, dict]] = {}
     for r in 支給控除の項目 or ():
         if str(r.get("会社", "")).strip() != str(会社) or not str(r.get("給与ソフトの欄") or "").strip():
             continue
-        始め = _月の字(r.get("適用開始"))
+        始め = _比べる月(r.get("適用開始"), f"支給控除の項目 {str(r.get('項目', '')).strip()} の 適用開始")
         if 月 and 始め and 始め > 月:
             continue
         名 = str(r.get("項目", "")).strip()
@@ -264,9 +271,14 @@ def _数の字(v: Decimal) -> str:
 
 
 def _書き方(時間の書き方):
-    if 時間の書き方 not in 時間の書き方たち:
+    """会社のマスタ `出口.時間の書き方` の字 → `時間の書き方たち` の 1 つ。項目の辞書（初期設定/項目.json）の書き方
+    （`60進（h:mm）`・`10進（h.hh）`＝後ろの（…）は説明）も、空白・全角半角の揺れも同じに読む（辞書のとおりに書いて止めない）。"""
+    s = "".join(unicodedata.normalize("NFKC", str(時間の書き方 or "")).split())
+    if s.endswith(")") and "(" in s and s.split("(", 1)[0] in 時間の書き方たち:
+        s = s.split("(", 1)[0]
+    if s not in 時間の書き方たち:
         raise ValueError(f"時間の書き方「{時間の書き方}」は {'・'.join(時間の書き方たち)} の外（会社のマスタから殻が渡す）")
-    return 時間の書き方
+    return s
 
 
 def 分を字に(分: Decimal, 時間の書き方: str | None) -> str:

@@ -12,7 +12,8 @@
   2. 同じ書き込みで、宛先の名に `管理表` を含み、タブ「月の状況」の 取り込み・納品 の欄に掛かる／止まりの理由 の欄に
      `今の版` を書く／範囲の無い構造の書き込み
   3. Drive の道具の create_file・copy_file で名が 1 の頭で始まる物、update_file・copy_file の元が 1 の本
-  4. Bash で、殻が渡した「置き換える命令」（例 `<命令> replace <id>`）の宛先が 1 の本
+  4. Bash で、殻が渡した「置き換える命令」の名から次の区切りまでの引数に replace が在り（例 `<命令> replace <id>`）、宛先が
+     1 の本。命令の文は字で分けて見る（replace の字が在るだけでは止めない）。分けられない文・見分けられない字は止める
   5. 名の照らし: Drive の道具で確認ページ（名の頭 `確認事項_`・前の形 `確認ページ_`）を作る時、名がパックの確認ページの名の形
      （確認ページ/確認ページ.py の 名の形）でない・置き場が違う（同じ所の 置き場の名たち＝名の 組 が 事務所 なら 事務所 の
      フォルダ〔00_事務所〕・ほかは会社のフォルダ〔8_確認事項〕。正本は docs/設計/Drive の型.md §3 の表）
@@ -182,20 +183,67 @@ def 確認ページの名の外れ(名: str, args: dict, k: 口) -> str | None:
     return None
 
 
-def _bash(cmd: str, k: 口) -> str | None:
-    if not k.置き換える命令 or "replace" not in cmd:
-        return None
+区切り = set("();&|<>")
+
+
+def _語(cmd: str) -> list[str]:
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    return list(lex)                                      # 閉じない引用は ValueError
+
+
+def _気になる(字: str, 命令たち: tuple[str, ...], 両方: bool = False) -> bool:
+    """引用と \\ を外した字に replace・命令の名が在るか（両方=True は両方とも）。分け直す前の字は割られているため外して見る。"""
+    生 = re.sub(r"[\\'\"]", "", 字)
+    r, n = "replace" in 生, any(c in 生 for c in 命令たち)
+    return (r and n) if 両方 else (r or n)
+
+
+def 置き換える先たち(cmd: str, 命令たち: tuple[str, ...], 深さ: int = 0) -> list[str]:
+    """Bash の命令の文を字で分け（引用・\\ は shell と同じに外す＝`re\\place`・`'re'place` も replace）、挙げた命令の名
+    （末尾で見る・path 付きも）から次の区切り（; && | 改行の前の ( など）までの引数に `replace` が在る時、その次の字＝
+    置き換える先の id を集める（旗や旗の値を挟んでも見る）。名の前や別の部分命令の `replace`（python の str.replace・
+    echo replace）は集めない。命令の名と replace を両方含む 1 つの字（`bash -c '…'`・heredoc の中の引用）は分け直して見、
+    分け直しても置き換える先が出ない時は見分けられない＝ValueError。分けられない文で、引用と \\ を外した字に replace か
+    命令の名が在る時も ValueError（呼ぶ側が止める）。"""
+    if not 命令たち:
+        return []
     try:
-        words = shlex.split(cmd)
+        words = _語(cmd)
     except ValueError:
-        words = cmd.split()
+        if _気になる(cmd, 命令たち):
+            raise
+        return []
+    先たち: list[str] = []
     for i, w in enumerate(words):
-        if w == "replace" and i + 1 < len(words) and any(x.endswith(c) for x in words[:i] for c in k.置き換える命令):
-            fid = words[i + 1]
-            try:
-                m = k.名を引く(fid)
-            except Exception:  # noqa: BLE001
-                return f"置き換える先（{fid}）の名が引けない＝出す物の本か見分けられない"
-            if 出す物の本か(m, k):
-                return f"置き換える命令で出す物の本（{m.get('name')}）を置き換える"
+        if any(w.endswith(c) for c in 命令たち):
+            for j in range(i + 1, len(words)):
+                if set(words[j]) <= 区切り:
+                    break
+                if words[j] == "replace":
+                    fid = words[j + 1] if j + 1 < len(words) else ""
+                    先たち.append("" if set(fid) <= 区切り else fid)
+                    break
+        elif _気になる(w, 命令たち, 両方=True):
+            中 = 置き換える先たち(w, 命令たち, 深さ + 1) if 深さ < 3 and w != cmd else []
+            if not 中:
+                raise ValueError(f"命令の名と replace を含む字（{w[:60]}）を分けて見分けられない")
+            先たち += 中
+    return 先たち
+
+
+def _bash(cmd: str, k: 口) -> str | None:
+    try:
+        先たち = 置き換える先たち(cmd, k.置き換える命令)
+    except ValueError:
+        return "命令の文を字で分けられない・置き換える命令か見分けられない（bash -c などは命令を直に打つ）"
+    for fid in 先たち:
+        if not fid:
+            return "置き換える命令の置き換える先が無い＝出す物の本か見分けられない"
+        try:
+            m = k.名を引く(fid)
+        except Exception:  # noqa: BLE001
+            return f"置き換える先（{fid}）の名が引けない＝出す物の本か見分けられない"
+        if 出す物の本か(m, k):
+            return f"置き換える命令で出す物の本（{m.get('name')}）を置き換える"
     return None

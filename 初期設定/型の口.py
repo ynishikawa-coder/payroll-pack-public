@@ -11,6 +11,9 @@ import sys
 from pathlib import Path
 
 ここ = Path(__file__).resolve().parent
+if str(ここ.parent) not in sys.path:   # 支給月の字の正本（芯/支給月の字.py）を読む
+    sys.path.insert(0, str(ここ.parent))
+from 芯 import 支給月の字  # noqa: E402
 
 
 def 型() -> dict:
@@ -116,29 +119,30 @@ def 事務所の質問と回答() -> dict:
 _問いの番号の形 = re.compile(r"Q(\d{4})(\d{2})-(\d+)")
 
 
-def _年月(支給月: str) -> tuple[str, str]:
-    m = re.match(r"\s*(\d{4})[.\-/]?(\d{1,2})", str(支給月 or ""))
-    if not m or not 1 <= int(m.group(2)) <= 12:
+def _比べる月(支給月: str) -> str:
+    """支給月の字 → 比べる字 `YYYY.MM`（正本 芯/支給月の字.py）。読めなければ止める。"""
+    x = 支給月の字.そろえる(支給月, "比べる")
+    if x is None:
         raise ValueError(f"支給月 {支給月!r} から年月が読めない（YYYY.MM支給）")
-    return m.group(1), f"{int(m.group(2)):02d}"
+    return x
 
 
 def 問いの番号(支給月: str, 順: int) -> str:
     """支給月（`YYYY.MM支給`・`YYYY.MM`・`YYYY-MM`）と順 → 問いの番号 `QYYYYMM-NN`（型の形）。"""
-    年, 月 = _年月(支給月)
-    return f"Q{年}{月}-{int(順):02d}"
+    return f"Q{_比べる月(支給月).replace('.', '')}-{int(順):02d}"
 
 
 def 問いの番号を読む(字) -> tuple[str, int] | None:
     """問いの番号の字 → (`YYYY.MM`, 順)。型の形 `Q202612-01` だけを読む。読めなければ None。"""
     m = _問いの番号の形.fullmatch(str(字 or "").strip())
-    return (f"{m.group(1)}.{m.group(2)}", int(m.group(3))) if m else None
+    月 = 支給月の字.そろえる(f"{m.group(1)}.{m.group(2)}", "比べる") if m else None
+    return (月, int(m.group(3))) if 月 else None
 
 
 def 次の問いの番号(行たち, 支給月: str) -> int:
     """質問と回答の行（既にある行）のうち同じ支給年月の問いの番号の一番大きい順＋1（無ければ 1）。"""
-    年, 月 = _年月(支給月)
-    順たち = [x[1] for r in 行たち or () if (x := 問いの番号を読む((r or {}).get("問いの番号"))) and x[0] == f"{年}.{月}"]
+    月 = _比べる月(支給月)
+    順たち = [x[1] for r in 行たち or () if (x := 問いの番号を読む((r or {}).get("問いの番号"))) and x[0] == 月]
     return max(順たち, default=0) + 1
 
 

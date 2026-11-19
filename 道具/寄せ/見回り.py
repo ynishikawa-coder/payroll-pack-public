@@ -95,9 +95,85 @@ def 置き場を見る(会社: dict, 今日: dt.date, 窓: str, 止め: list | N
     return out
 
 
+# 会社の根の木（docs/設計/Drive の型.md §2「会社の根」）。置き場の検査の 1・2 が照らす名（型.json は置き場の木を持たない＝ここ 1 か所）
+会社の根の名 = ("1_決まり", "2_マスタ", "3_月ごと", "8_確認事項", "9_履歴")
+台帳の名 = re.compile(r"台帳_\d{4}")
+月のフォルダの名 = ("1_届いた物", "2_出す物")
+# 事務所の根の 00_事務所（Drive の型 §2「事務所の根」。殻が会社の置き場に並べて渡す時もある）
+事務所の名 = "00_事務所"
+事務所の物 = ("事務所のルール.md", "事務所の設定", "管理表", "質問と回答", "9_履歴")
+事務所の確認事項 = re.compile(r"確認事項_事務所_.+\.html")
+決まりの4つ = ("給与のルール.md", "作業のルール.md", "人のルール.md", "質問と回答")
+AIの作業の物 = re.compile(r"\.(?:py|json|ipynb|pyc)$|引き継ぎ")
+置き場の検査の項目 = {1: "木に無い名", 2: "1_決まり/ に 4 つ以外の物", 3: "旧_・コピー・（1） の名", 4: "消す日が過ぎた（知らせ）",
+               5: "AI の作業の物", 6: "シートのタブ・見出しが型と違う・列 会社 が無いか空"}
+
+
+def 置き場の検査(会社: dict, 今日: dt.date, 型: dict | None = None) -> list[dict]:
+    """置き場の検査（Drive の型 §2「照らす検査の要件」の 6 つ）を 1 つの口で当てる → [{会社, 項目, 何, 所, 訳, 赤}]。
+    項目 4（消す日が過ぎた）は知らせ（赤＝False）。6 は 型（型.json を開いた物）を渡した時だけシートの見出しを型と照らし、
+    列 会社 の無いタブ・会社 の空な行は型が無くても見る。置き場は 会社["置き場"]（組の根からの名・フォルダは / で終わる）。"""
+    out = []
+    名の会社 = 会社.get("会社", "")
+
+    def 挙げる(項目: int, 所: str, 訳: str):
+        out.append({"会社": 名の会社, "項目": 項目, "何": 置き場の検査の項目[項目], "所": 所, "訳": 訳, "赤": 項目 != 4})
+
+    for p in 会社.get("置き場", []):
+        部分 = [x for x in p.rstrip("/").split("/") if x]
+        if not 部分:
+            continue
+        名 = 部分[-1]
+        頭 = 部分[0]
+        if 頭 == 事務所の名:
+            if len(部分) >= 2 and 部分[1] not in 事務所の物 and not 事務所の確認事項.fullmatch(部分[1]):
+                挙げる(1, "/".join(部分[:2]), f"00_事務所 に木（{'・'.join(事務所の物)}・確認事項_事務所_…）に無い名「{部分[1]}」")
+        elif 頭 not in 会社の根の名 and not 台帳の名.fullmatch(頭):
+            挙げる(1, 頭, f"会社の根に木（{'・'.join(会社の根の名)}・台帳_<支給年>）に無い名「{頭}」")
+        elif 頭 == "3_月ごと" and len(部分) >= 3 and 部分[2] not in 月のフォルダの名:
+            挙げる(1, "/".join(部分[:3]), f"月のフォルダに {'・'.join(月のフォルダの名)} のほかの名「{部分[2]}」")
+        if 頭 == "1_決まり" and len(部分) >= 2 and (部分[1] not in 決まりの4つ or len(部分) > 2 or p.endswith("/")):
+            挙げる(2, "/".join(部分[:2]), f"1_決まり/ に {'・'.join(決まりの4つ)} のほかの物「{部分[1]}」")
+        if any(x.startswith("旧_") or "コピー" in x or "（1）" in x or "(1)" in x for x in 部分):
+            挙げる(3, p, f"名に 旧_・コピー・（1） を持つ物「{名}」")
+        期限 = 名の期限(p)
+        if 頭 == "9_履歴" and 名.startswith("消す_") and 期限 and 期限 <= 今日:
+            挙げる(4, p, f"消す日 {期限.isoformat()} が過ぎた")
+        if AIの作業の物.search(名):
+            挙げる(5, p, f"AI の作業の物「{名}」は Drive に置かない（窓の作業場へ）")
+    型のファイル = 当てる.型を読む(型)["ファイル"] if 型 else {}
+    for f, tabs in (会社.get("シート") or {}).items():
+        K = 型のファイル.get(f, 型のファイル.get(台帳の名.sub("台帳_<支給年>", f)) if 台帳の名.fullmatch(f) else None)
+        for t, rows in tabs.items():
+            if t.startswith("旧_") or not rows:
+                continue
+            h = [str(x).strip() for x in rows[0]]
+            会社が要る = not f.startswith(事務所の名 + "/")   # 事務所の設定のタブは型が列「会社」を持たない物がある
+            if K is not None:
+                if t not in K:
+                    挙げる(6, f"{f}/{t}", "型に無いタブ")
+                    continue
+                want = [c["名"] for c in K[t]]
+                会社が要る = "会社" in want
+                if h[:len(want)] != want or any(x for x in h[len(want):]):
+                    挙げる(6, f"{f}/{t}", f"見出しが型と違う（型: {'・'.join(want)}／シート: {'・'.join(x for x in h if x)}）")
+            if not 会社が要る:
+                continue
+            if "会社" not in h:
+                挙げる(6, f"{f}/{t}", "列 会社 が無い")
+                continue
+            i = h.index("会社")
+            空 = [n for n, r in enumerate(rows[1:], 2)
+                 if any(str(v or "").strip() for v in r) and not str(r[i] if i < len(r) else "").strip()]
+            if 空:
+                挙げる(6, f"{f}/{t}", f"列 会社 が空の行（{'・'.join(map(str, 空[:5]))}{' ほか' if len(空) > 5 else ''} 行目）")
+    return out
+
+
 def 見回り(会社たち: list[dict], 直したち: list[dict], 今の版: int, 今日: dt.date | None = None,
-         窓: str = "", 寄せの消す問い: list[dict] | None = None, 前の答え: dict | None = None) -> dict:
-    """事務所ごとに 1 枚の消す問いを作る。答えの無かった行は次の回にもう一度並ぶ（前の答えに無い行は全部並べる）。"""
+         窓: str = "", 寄せの消す問い: list[dict] | None = None, 前の答え: dict | None = None, 型: dict | None = None) -> dict:
+    """事務所ごとに 1 枚の消す問いを作る。答えの無かった行は次の回にもう一度並ぶ（前の答えに無い行は全部並べる）。
+    置き場の検査（§2 の 6 つ）を会社ごとに当て、`置き場の検査` に返す（項目 4 のほかが 1 つでもあれば 赤）。"""
     今日 = 今日 or dt.date.today()
     前の答え = 前の答え or {}
     行たち = []
@@ -119,13 +195,22 @@ def 見回り(会社たち: list[dict], 直したち: list[dict], 今の版: int
     残す = {k: v for k, v in 前の答え.items() if str(v).startswith("残す:")}
     行たち = [x for x in 行たち if not (x["鍵"] in 残す and dt.date.fromisoformat(残す[x["鍵"]][3:].strip()) > 今日)]
     ずれ = [x for c in 会社たち for x in 書き方を見る(c)]
+    検査 = [x for c in 会社たち for x in 置き場の検査(c, 今日, 型)]
     前の版のまま = [{"会社": c["会社"], "型の版": int(c.get("型の版", 0) or 0)} for c in 会社たち if int(c.get("型の版", 0) or 0) < 今の版]
     消せる = 消してよい直し([int(c.get("型の版", 0) or 0) for c in 会社たち], 直したち)
     人が見る物 = 消す問いの一枚(行たち, 前の版のまま, 消せる)
     if ずれ:
         人が見る物 += "\n\n" + 書き方のずれの一枚(ずれ)
+    if 検査:
+        人が見る物 += "\n\n" + 置き場の検査の一枚(検査)
     return {"消す問い": 行たち, "前の版のままの会社": 前の版のまま, "消してよい直し": 消せる, "書き方のずれ": ずれ,
-            "赤": bool(ずれ), "人が見る物": 人が見る物}
+            "置き場の検査": 検査, "赤": bool(ずれ) or any(x["赤"] for x in 検査), "人が見る物": 人が見る物}
+
+
+def 置き場の検査の一枚(検査) -> str:
+    L = ["# 置き場の検査（Drive の型 §2 の 6 つ。4 は知らせ）", "", "| 会社 | 項目 | 所 | 訳 |", "|---|---|---|---|"]
+    L += [f"| {x['会社']} | {x['項目']} {x['何']} | {x['所']} | {x['訳']} |" for x in 検査]
+    return "\n".join(L)
 
 
 def 書き方を見る(会社: dict) -> list[dict]:

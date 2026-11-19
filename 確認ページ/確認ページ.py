@@ -32,6 +32,7 @@ def _読み込む(名: str, path: Path):
 段 = _読み込む("確認ページ_段の解決", 根 / "初期設定" / "段の解決.py")
 型 = _読み込む("確認ページ_型の口", 根 / "初期設定" / "型の口.py")
 
+from 芯 import 支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
 from 芯.計算 import 暦  # noqa: E402  (締めた期間の式を 1 か所に)
 
 雛形 = ここ / "雛形.html"   # qa-html の型の写し（qa:css・qa:js・qa:foot は 1 字も変えない。直す時は型から写し直す）
@@ -136,16 +137,17 @@ def 支給月の名と知らせ(支給月: str, 支給の月=None) -> tuple[str,
     M は締めた期間の終わりの月（芯/計算/暦.期間 と同じ式）: 会社の `支払.支給の月` が 当月 なら支給月・翌月 なら前の月・
     翌々月 なら 2 つ前の月。支給の月が渡されない・読めない時は拒まず知らせ、名に（M月分）があればそれを、無ければ
     既定の 翌月 で出す。支給の月が分かっていて（M月分）が合わない時は ValueError。"""
-    m = re.fullmatch(r"(\d{4})\.(\d{2})支給(?:（(\d{1,2})月分）)?", 支給月.strip())
-    if not m:
+    m = re.fullmatch(r"(.+?支給)(?:（(\d{1,2})月分）)?", 支給月.strip())
+    頭 = m.group(1) if m else ""
+    if not re.fullmatch(r"\d{4}\.\d{2}支給", 頭):
         raise ValueError(f"支給月 {支給月!r} は YYYY.MM支給 の形でない")
-    y, mm = int(m.group(1)), int(m.group(2))
-    if not 1 <= mm <= 12:
+    if not 支給月の字.その形か(頭, "殻"):
         raise ValueError(f"支給月 {支給月!r} の月が 1〜12 でない")
-    書いた = int(m.group(3)) if m.group(3) else None
+    書いた = int(m.group(2)) if m.group(2) else None
+    中 = 支給月の字.そろえる(頭, "中")
 
     def 月分(語: str) -> int:
-        return 暦.期間(f"{y:04d}-{mm:02d}", "末", 語)[1].month
+        return 暦.期間(中, "末", 語)[1].month
 
     語 = _支給の月を読む(支給の月)
     知らせ = []
@@ -163,7 +165,7 @@ def 支給月の名と知らせ(支給月: str, 支給の月=None) -> tuple[str,
             M = 月分(既定の支給の月)
             外れ = f"名の（{書いた}月分）は 当月〜翌々月 のどれにも当たらない。" if 書いた is not None else ""
             知らせ.append(f"支払.支給の月 が{何}。{外れ}既定の {既定の支給の月} で {M} 月分とした")
-    return f"{y:04d}.{mm:02d}支給（{M}月分）", 知らせ
+    return f"{頭}（{M}月分）", 知らせ
 
 
 def 支給月の名(支給月: str, 支給の月=None) -> str:

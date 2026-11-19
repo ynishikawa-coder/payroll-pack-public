@@ -47,7 +47,7 @@ def test_消した項目の列と行を畳み_ほかは変えない():
     r = 見張り.寄せる(前)
     assert r["寄せられない物"] == []
     後 = r["寄せた後の値"]
-    assert 後["型の版"] == 30
+    assert 後["型の版"] == json.loads((見張り.ここ.parent.parent / "初期設定" / "型.json").read_text(encoding="utf-8"))["版"]
     m = 後["シート"]["2_マスタ"]
     assert not {"支払.組", "支払.方法", "手当.通勤の形"} & set(m["社員"][0])
     assert [x[1] for x in m["会社"][1:]] == [x[1] for x in 前["シート"]["2_マスタ"]["会社"][1:-2]]
