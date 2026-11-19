@@ -39,6 +39,17 @@ def 出す物の置き場(パック: Path) -> dict[str, str]:
     return dict(読む(パック, "出口.名と版").出す物の置き場)
 
 
+def 番号の形たち(パック: Path) -> tuple[str, ...]:
+    """人へ見せる文に出る番号の形（問いの番号・確認ページの受付番号）の正規表現の字を、パックの正本から読む（写さない）。
+    正本: 初期設定/型の口.py の `_問いの番号の形`・確認ページ/確認ページ.py の `受付番号の形`。読めなければ例外。"""
+    型の口 = 読む(パック, "初期設定.型の口")
+    f = パック / "確認ページ" / "確認ページ.py"   # 試験の束の名とぶつからないよう file から読む（確認ページの名の形 と同じ道）
+    s = importlib.util.spec_from_file_location("給与エージェント_確認ページ", f)
+    確認 = importlib.util.module_from_spec(s)
+    s.loader.exec_module(確認)
+    return (型の口._問いの番号の形.pattern, 確認.受付番号の形.pattern)
+
+
 def 名の頭たち(パック: Path) -> tuple[str, ...]:
     """出荷の口だけが書く本の名の頭（取り込み_・賞与の取り込み_・支給控除一覧_…・有給休暇管理表_ ほか）。長い順。"""
     return tuple(sorted({f"{物}_" for 物 in 出す物の置き場(パック)}, key=len, reverse=True))
