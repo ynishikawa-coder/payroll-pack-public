@@ -17,6 +17,10 @@ import sys
 from pathlib import Path
 
 ここ = Path(__file__).resolve().parent
+if str(ここ.parent) not in sys.path:
+    sys.path.insert(0, str(ここ.parent))
+
+from 芯 import 支給月の字  # noqa: E402  支給月の字の正本（鍵の 支給月 はここで読む＝字を写さない）
 
 
 # 書く手順の 書き方: 値は字のまま書く（Sheets の valueInputOption=RAW）＝数だけの字・日付の字を数や日付に読ませない
@@ -105,8 +109,27 @@ def _行の辞書(名: str, 値: list[list]) -> list[dict]:
     return [{k: (r[i] if i < len(r) else "") for i, k in enumerate(h)} for r in 値[1:]]
 
 
+def _鍵の値(名: str, k: str, v, 何: str):
+    """鍵の列の値 → 比べる値。支給月は正本（芯/支給月の字.py の 鍵の年月）で (年, 月) に読む＝管理表の字
+    `YYYY.MM支給（M月分）` も殻の字 `YYYY.MM支給` も同じ支給月として当たる。読めない字は拒む（黙って別の月・行無しにしない）。"""
+    if k != "支給月":
+        return str(v)
+    x = 支給月の字.鍵の年月(v)
+    if x is None:
+        raise 拒む(f"{名}: {何}の支給月 {v!r} が読めない（`YYYY.MM支給（M月分）` か `YYYY.MM支給`。docs/毎月の流れ.md「支給月の書き方」）")
+    return x
+
+
 def _探す(名: str, 行たち: list[dict], 鍵の値: dict) -> int | None:
-    当たり = [i for i, r in enumerate(行たち) if all(str(r[k]) == str(鍵の値[k]) for k in タブ(名)["鍵"])]
+    鍵 = タブ(名)["鍵"]
+    探す = {k: _鍵の値(名, k, 鍵の値[k], "探す鍵") for k in 鍵}
+    当たり = []
+    for i, r in enumerate(行たち):
+        if not all(str(r[k]) == str(鍵の値[k]) or k == "支給月" for k in 鍵):
+            continue
+        if "支給月" in 鍵 and _鍵の値(名, "支給月", r["支給月"], f"{i + 2} 行目") != 探す["支給月"]:
+            continue
+        当たり.append(i)
     if len(当たり) > 1:
         raise 拒む(f"{名}: 鍵 {鍵の値} の行が 2 つある")
     return 当たり[0] if 当たり else None
@@ -167,6 +190,9 @@ def 書く(入力: dict) -> list[dict]:
 def 月の行(入力: dict) -> list[dict]:
     """事務所の段。会社の一覧（会社・組・状態）の 止めた 以外の会社について、支給月の行が無ければ足す。"""
     名 = "月の状況"
+    if 支給月の字.置き場の字を読む(入力.get("支給月")) is None:
+        raise 拒む(f"{名}: 起こす行の支給月 {入力.get('支給月')!r} は `YYYY.MM支給（M月分）` の字で渡す"
+                 "（管理表の字＝docs/毎月の流れ.md「支給月の書き方」・芯/支給月の字.py の 置き場）")
     _見出しを照らす(名, 入力["今の値"])
     今の行 = _行の辞書(名, 入力["今の値"])
     h = 見出し(名)

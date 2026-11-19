@@ -24,6 +24,7 @@ BIN = Path(__file__).resolve().parent.parent / "bin"
 sys.path.insert(0, str(BIN))
 import パックの場所 as 場所  # noqa: E402
 import 止める見張り as 見張り  # noqa: E402
+import オーナーへの文の照らし as オーナーへの文  # noqa: E402
 
 なぜ = ("給与の出す物の本と管理表の今の版は、パックの出口が作り証明を付けた表だけを、出荷の口が書く"
        "（出す前の照らしを通す）。{what}。上流（マスタ・決まりの台帳・パック）を直して出口で作り直し、出荷の口で出す")
@@ -59,6 +60,13 @@ def _拒む(訳: str) -> None:
                                              "permissionDecisionReason": 訳}}, ensure_ascii=False))
 
 
+def _知らせる(訳: list[str]) -> None:
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext":
+                      "給与の見張り（知らせるだけ・止めない。決まりの正本は payroll-agent の 決まり.md「聞く」）: "
+                      + " ／ ".join(訳) + "。答えを受けたら、同じ問いを直した文で出し直さず、決まりのとおり扱う"}},
+                     ensure_ascii=False))
+
+
 def main(stdin=None) -> int:
     try:
         ev = json.load(stdin or sys.stdin)
@@ -68,6 +76,16 @@ def main(stdin=None) -> int:
         _拒む("給与の見張りの hook が入力を読めない＝見分けられないので止めた。もう一度打つ。続くなら plugin payroll-agent の hooks を見る")
         return 0
     tool = str(ev.get("tool_name", ""))
+    if tool == "AskUserQuestion":   # オーナーへの選択肢の画面の文: 番号だけの頼み・担当者へ聞く物を知らせる（止めない）
+        パック = 場所.探す()
+        try:
+            形たち = 場所.番号の形たち(パック) if パック else None
+        except Exception:  # noqa: BLE001  読めない＝番号は照らせないと知らせる（止めない）
+            形たち = None
+        訳 = オーナーへの文.照らす(オーナーへの文.選択肢の画面の文(ev.get("tool_input") or {}), 形たち)
+        if 訳:
+            _知らせる(訳)
+        return 0
     if not 見張り.見るか(tool):
         return 0
     パック = 場所.探す()
