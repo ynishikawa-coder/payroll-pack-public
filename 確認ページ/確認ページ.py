@@ -62,6 +62,8 @@ _決まりの先 = re.compile(r"^(?:2_マスタ/(?:会社|勤務の型|支給控
 自由記入 = "__自由記入__"
 版の名 = "__版__"
 受付番号の名 = "__受付番号__"
+# 受付番号の形の正本（qa-html の型: R<YYMMDD>-<英数 4 字>）。月次/例の確かめ.py も例の確かめの出所をここで照らす
+受付番号の形 = re.compile(r"R\d{6}-[A-Z0-9]{4}")
 分からない = "__unknown__"
 分からないの字 = "分からない・社内で確かめてから答える"   # 型の字のまま（検査が見る）
 分からないの語 = "分からない"   # 質問と回答の 回答 に書く語
@@ -1007,7 +1009,7 @@ def _送信を読む(答え, 回答日: str, 鍵たち=()) -> tuple[dict | None,
          "receipt": str(p.get("receipt") or "").strip()}
     if not p["receipt"]:
         p["receipt"] = _受付番号を出す(回答日, p)
-    elif not re.fullmatch(r"R\d{6}-[A-Z0-9]{4}", p["receipt"]):
+    elif not 受付番号の形.fullmatch(p["receipt"]):
         return None, [f"受付番号 {p['receipt']!r} が R<YYMMDD>-<英数 4 字> でない"]
     return p, []
 
