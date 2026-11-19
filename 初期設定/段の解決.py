@@ -95,12 +95,8 @@ def 月(v: str, 形: str = "比べる") -> str:
 
 
 def 行たち(表) -> list[dict]:
-    """列名の dict の並びか、get_values の形（1 行目が見出し）を dict の並びに。"""
-    表 = list(表 or [])
-    if 表 and isinstance(表[0], (list, tuple)):
-        見出し = [str(c) for c in 表[0]]
-        return [{c: (r[i] if i < len(r) else "") for i, c in enumerate(見出し)} for r in 表[1:]]
-    return [dict(r) for r in 表]
+    """列名の dict の並びか、get_values の形（1 行目が見出し）を dict の並びに（読み方の正本は 型の口.格子を行へ）。"""
+    return 口.格子を行へ(表)
 
 
 # ---- 値の読み方 ----

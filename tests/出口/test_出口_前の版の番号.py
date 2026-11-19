@@ -26,7 +26,10 @@ def test_前の版が無い置き場は空の並びを渡して_v1():
     assert 名と版.名を付ける("取り込み", 会社, 月, [], []).名 == f"取り込み_{会社}_{月}_v1"
 
 
-@pytest.mark.parametrize("今, 履歴", [(None, []), ([], None), (None, None), (f"取り込み_{会社}_{月}_v6", []), ([], {"取り込み": []})])
+@pytest.mark.parametrize("今, 履歴", [
+    (None, []), ([], None), (None, None), (f"取り込み_{会社}_{月}_v6", []), ([], {"取り込み": []}),
+    ((n for n in [f"取り込み_{会社}_{月}_v6"]), []),                     # 使い切る並び（generator）
+])
 def test_前の版の名を並びで渡さなければ止める(今, 履歴):
     with pytest.raises(ValueError, match="名の並びで渡す"):
         名と版.名を付ける("取り込み", 会社, 月, 今, 履歴)
@@ -34,12 +37,23 @@ def test_前の版の名を並びで渡さなければ止める(今, 履歴):
         名と版.名を付ける("取り込み", 会社, 月)   # 引数を省けない
 
 
+@pytest.mark.parametrize("今", [[{"name": f"取り込み_{会社}_{月}_v6"}], [None], [6]])
+def test_名の並びの中身が字でなければ止める(今):
+    # Drive の一覧の dict などをそのまま渡すと、どの名も形に合わず黙って v1 になっていた（同じ根の穴・2026-11-19）
+    with pytest.raises(ValueError, match="名の字だけで渡す"):
+        名と版.名を付ける("取り込み", 会社, 月, 今, [])
+    with pytest.raises(ValueError, match="名の字だけで渡す"):
+        名と版.名を付ける("取り込み", 会社, 月, [], 今)
+
+
 def test_書き口も前の版の名を渡さなければ止め_置き場の名の並びをそのまま受ける():
     通 = 関所.通す(作.行たち)
-    with pytest.raises(ValueError, match="名の並びで渡す"):
+    with pytest.raises(TypeError):   # 書き口も引数を省けない（既定を持たない）
         書き口.取り込み(通, "9", 作.月, 作.対応, {**作.形の値, "文字コード": "utf-8"}, "60進")
-    with pytest.raises(ValueError, match="名の並びで渡す"):
+    with pytest.raises(TypeError):
         書き口.支給控除一覧(通, "9", 作.月, 委託の人=作.委託)
+    with pytest.raises(ValueError, match="名の並びで渡す"):
+        書き口.取り込み(通, "9", 作.月, 作.対応, {**作.形の値, "文字コード": "utf-8"}, "60進", 今ある名=None, 履歴にある名=[])
     with pytest.raises(ValueError, match="名の並びで渡す"):   # 物ごとの dict に出す物の鍵が欠けても止める
         書き口.支給控除一覧(通, "9", 作.月, 委託の人=作.委託, 今ある名={"支給控除一覧_雇用": []}, 履歴にある名={"支給控除一覧_雇用": []})
     置き場 = [f"支給控除一覧_雇用_9_{作.月}_v2", f"支給控除一覧_業務委託_9_{作.月}_v4", f"取り込み_9_{作.月}_v6"]
