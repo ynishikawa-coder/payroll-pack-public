@@ -38,6 +38,7 @@ if _根 not in _sys.path:
     _sys.path.insert(0, _根)
 from 芯 import 設定 as _設定  # noqa: E402
 from 芯 import 支給月の字 as _支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
+from 芯 import 字 as _字  # noqa: E402  (字のそろえ方の正本＝見出し・値の語はそろえて照らす)
 
 
 def _台帳の形():
@@ -343,12 +344,25 @@ def 日付(v) -> str:
 
 
 def 列の番号(rows, 名):
+    """見出しの行で 名 の列の番号（無ければ None＝その操作は前の形でない・当たり済み）。
+
+    字のそのままの一致を先に見て、無ければ 芯/字.py でそろえた字で照らす（頭や尾の空白・全角・幅の無い字で揺れた見出しも
+    同じ列）。そろえると 2 つ以上の見出しに当たる時は どれか決めず None（重なった見出しは型との照らしが寄せられない物に出す）。"""
     if not rows:
         return None
-    try:
-        return rows[0].index(名)
-    except ValueError:
+    head = rows[0]
+    if 名 in head:
+        return head.index(名)
+    当たり = [k for k, h in enumerate(head) if _字.同じ(h, 名)]
+    return 当たり[0] if len(当たり) == 1 else None
+
+
+def _前の語の長さ(v: str, 前: str) -> int | None:
+    """v の頭が、そろえると 前 と同じになる長さ（頭の空白・全角・幅の無い字の揺れも当てる＝芯/字.py）。当たらなければ None。
+    頭で読み替える時、残りの字（v[長さ:]）は元の字のまま後ろに付ける。"""
+    if not _字.頭が(v, 前):
         return None
+    return next((k for k in range(1, len(v) + 1) if _字.同じ(v[:k], 前)), None)
 
 
 def 列を消す(rows, i):
@@ -603,7 +617,7 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
             i, j = 列の番号(rows, 前), 列の番号(rows, 後)
             if i is None:
                 continue
-            if j is None:
+            if j is None or j == i:   # j == i: 前と後がそろえると同じ字（字の揺れだけを直す名の変え）＝見出しを今の名へ書くだけ
                 head[i] = 後
                 記.当てた.append((版, 番, する, f"{where}/{前}→{後}"))
                 continue
@@ -659,8 +673,9 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
             合わせ = op.get("合わせ", "全体")
             for r in range(1, len(rows)):
                 v = str(rows[r][i])
-                if (v.startswith(op["前"]) if 合わせ != "全体" else v.strip() == op["前"]):
-                    rows[r][i] = op["後"] + (v[len(op["前"]):] if 合わせ == "頭" else "")
+                頭の長さ = _前の語の長さ(v, op["前"]) if 合わせ != "全体" else None
+                if (頭の長さ is not None if 合わせ != "全体" else _字.同じ(v, op["前"])):
+                    rows[r][i] = op["後"] + (v[頭の長さ:] if 合わせ == "頭" else "")
                     記.当てた.append((版, 番, する, f"{where}/{op['列']}/{行の名(rows, r)}"))
                     if op.get("問いを起こす"):
                         記.足りない.append({"所": where, "行": 行の名(rows, r), "項目": op["列"],

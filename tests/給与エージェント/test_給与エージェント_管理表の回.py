@@ -35,7 +35,7 @@ def test_命令の管理表の行は回のタブと行を出す(monkeypatch, cap
     monkeypatch.setattr(G, "照らす", lambda *a, **k: [])   # 照らしそのものは test_給与エージェント_出す前の照らし が見る
     f = tmp_path / "in.json"
     f.write_text(json.dumps(入力(出す物(物)), ensure_ascii=False), encoding="utf-8")
-    assert G.main(["管理表の行", str(f), "--パック", str(根), "--名", "n_v1", "--url", "u"]) == 0
+    assert G.main(["管理表の行", str(f), "--パック", str(根), "--名", "n_v1", "--url", "u", "--今の止まりの理由", ""]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["管理表のタブ"] == タブ and out["回"] == ("賞与" if タブ == "賞与の状況" else "月")
     # 月の出荷で有給休暇管理表を出さない時は、その訳が止まりの理由の頭に残る（賞与は有給を出さない回＝付けない）

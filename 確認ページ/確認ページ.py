@@ -1,17 +1,21 @@
 """確認ページ — 質問と回答の行から、配る用の 1 枚の自己完結 HTML と、その名・置き場・貼り戻し・管理表の 1 行を返す。
 
 正本は質問と回答。確認ページは道具が起こす表示と配る用の写し（`docs/設計/Drive の型.md` §3）。
-HTML は qa-html の 1 つの型（土台 docs-kit の skill qa-html の references/template.html を丸ごと写した `雛形.html`）で起こし、
+HTML は qa-html の 1 つの型（土台 docs-kit の skill qa-html の型。repo に写さず、入った docs-kit の check.mjs の `--template` で毎回読む）で起こし、
 答えは型の答えの形 qa-html/2（問いの鍵・版・受付番号）で受けて、鍵で質問と回答の行へ戻す。
 この道具は Drive を開かない。問いの一覧を受けて文字列を返すだけで、置くのは殻（環境の口）。
 返す HTML は外へ通信しない（外の script・style・画像・fetch を持たない）。
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 from html import escape
 from pathlib import Path
@@ -35,7 +39,53 @@ def _読み込む(名: str, path: Path):
 from 芯 import 支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
 from 芯.計算 import 暦  # noqa: E402  (締めた期間の式を 1 か所に)
 
-雛形 = ここ / "雛形.html"   # qa-html の型の写し（qa:css・qa:js・qa:foot は 1 字も変えない。直す時は型から写し直す）
+
+
+def qa_htmlの道具() -> Path:
+    """土台の qa-html の check.mjs の path（型・検査・答えの形の正本・写さず直に読む＝土台の qa-html の SKILL.md §配り方）。
+
+    CI は環境の QA_HTML_CHECK（ci.yml が土台の main の先端から取って渡す）。窓は Claude Code の台帳
+    （<CLAUDE_CONFIG_DIR か ~/.claude>/plugins/installed_plugins.json）の docs-kit の installPath（今入っている 1 つ）。
+    plugin の cache の「新しい物」は拾わない。見つからない・2 つに割れる時は止める（別の版の型で起こさない）。
+    """
+    env = os.environ.get("QA_HTML_CHECK", "")
+    if env:
+        if Path(env).is_file():
+            return Path(env)
+        raise FileNotFoundError(f"QA_HTML_CHECK の file が無い: {env}")
+    台帳 = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "plugins" / "installed_plugins.json"
+    try:
+        入った = json.loads(台帳.read_text(encoding="utf-8")).get("plugins") or {}
+    except (OSError, ValueError, AttributeError):
+        入った = {}
+    在る = sorted({str(Path(行["installPath"]) / "skills" / "qa-html" / "check.mjs")
+                 for 名, 行たち in 入った.items() if str(名).split("@")[0] == "docs-kit"
+                 for 行 in (行たち if isinstance(行たち, list) else []) if isinstance(行, dict) and 行.get("installPath")})
+    在る = [p for p in 在る if Path(p).is_file()]
+    if len(在る) == 1:
+        return Path(在る[0])
+    if 在る:
+        raise FileNotFoundError(f"入った docs-kit が {len(在る)} つに割れている（どれの型か決まらない）: {在る}")
+    raise FileNotFoundError("土台の qa-html の検査（plugin docs-kit の skills/qa-html/check.mjs）が見つからない。"
+                            "窓は plugin docs-kit を入れる・CI は QA_HTML_CHECK に土台の main の check.mjs を渡す（型の写しは repo に置かない）")
+
+
+@functools.lru_cache(maxsize=None)
+def _型を読む(道具: str) -> str:
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node が無く、土台の qa-html の型を読めない（check.mjs --template）")
+    p = subprocess.run([node, 道具, "--template"], capture_output=True, text=True, timeout=60)
+    if p.returncode != 0 or "<!--qa:css-->" not in p.stdout:
+        raise ValueError(f"土台の check.mjs が型を返さない（--template を知らない古い docs-kit か壊れた）: {道具}: {p.stderr.strip()[-200:]}")
+    return p.stdout
+
+
+def 雛形を読む() -> str:
+    """qa-html の 1 つの型（土台の正本そのもの）。qa:css・qa:js・qa:foot は 1 字も変えずに使う。"""
+    return _型を読む(str(qa_htmlの道具()))
+
+
 既定の支給の月 = "翌月"  # 初期設定/項目.json の 支払.支給の月 の既定・芯/計算/要る値 と同じ
 
 用たち = ("立ち上げ", "毎月")
@@ -65,7 +115,7 @@ _決まりの先 = re.compile(r"^(?:2_マスタ/(?:会社|勤務の型|支給控
 # 受付番号の形の正本（qa-html の型: R<YYMMDD>-<英数 4 字>）。月次/例の確かめ.py も例の確かめの出所をここで照らす
 受付番号の形 = re.compile(r"R\d{6}-[A-Z0-9]{4}")
 分からない = "__unknown__"
-分からないの字 = "分からない・社内で確かめてから答える"   # 型の字のまま（検査が見る）
+分からないの字 = "分からない・確かめてから答える"   # 型の字のまま（検査が見る）
 分からないの語 = "分からない"   # 質問と回答の 回答 に書く語
 当てはまらない = "当てはまらない"
 # 形ごとに道具が後ろへ足す選択肢（ひとことに書かせる選択肢がもうあれば足さない）。fact は「当てはまらない」
@@ -947,7 +997,7 @@ def 作る(入力: dict) -> dict:
 
 def _一枚の_html(入力: dict, 題: str, 前書き: str, 宛先: str, 色: str, 資料: list[dict], 期限: str, 次: str, 版の: str,
               箱たち: list[str]) -> str:
-    t = 雛形.read_text(encoding="utf-8")
+    t = 雛形を読む()
     t = re.sub(r"^<!doctype html>\n<!--.*?-->\n", "<!doctype html>\n", t, count=1, flags=re.S)
     t = re.sub(r"<title>\{\{[^}]*\}\}</title>", lambda _: f"<title>{escape(題)}</title>", t, count=1)
     t = re.sub(r'<body data-dest="\{\{[^}]*\}\}" style="--brand:#[0-9a-fA-F]{6}">',
@@ -973,7 +1023,7 @@ def _一枚の_html(入力: dict, 題: str, 前書き: str, 宛先: str, 色: st
     t = 前 + 印 + "\n" + "\n\n".join(箱たち) + "\n\n" + 後
     t = re.sub(r'(<p class="next">)\{\{[^}]*\}\}(</p>)', lambda m: m.group(1) + escape(次) + m.group(2), t, count=1)
     if "{{" in t:
-        raise ValueError(f"雛形の差し込みが残った: {re.findall(r'{{[^}]*}}', t)[:3]}（雛形を qa-html の型から写し直す）")
+        raise ValueError(f"雛形の差し込みが残った: {re.findall(r'{{[^}]*}}', t)[:3]}（土台の qa-html の型の差し込みが変わった＝この道具を型に合わせて直す）")
     return t
 
 
@@ -1054,12 +1104,31 @@ def _答えの語(行: dict, 値たち: list[str], 見出したち: list[str]) -
     return 語たち, 知らせ
 
 
-def 貼り戻し(行たち: list[dict], 答え, 回答日: str, 版: str | None = None) -> dict:
+_版の字の形 = re.compile(r"(?P<頭>.+)-v(?P<版>\d+)(?:-(?P<枚>\d+))?")
+
+
+def 答えの版(答えの版の字, 今の版の字: str) -> tuple[bool, str]:
+    """答えに付いた版の字と今配っている版の字（`版の字`）→ (古い版か, 赤)。
+    同じ組×支給月で今より前の版・ほかの枚の版・版の無い答えは古い版。今より新しい版・別の支給月の版は赤（配った版と取り違えた
+    ＝新しい答えとして貼らない）。大小は番号で見る（字の同じか違うかだけで見ない）。"""
+    今 = _版の字の形.fullmatch(str(今の版の字))
+    答 = _版の字の形.fullmatch(str(答えの版の字 or ""))
+    if not 答:
+        return True, ""
+    if 答["頭"] != 今["頭"]:
+        return False, f"版 {答えの版の字} は今配っている版 {今の版の字} と別の支給月の版（その月の質問と回答へ貼る）"
+    if int(答["版"]) > int(今["版"]):
+        return False, f"版 {答えの版の字} は今配っている版 {今の版の字} より新しい（今の版の字を取り違えていないか）"
+    return 答えの版の字 != 今の版の字, ""
+
+
+def 貼り戻し(行たち: list[dict], 答え, 回答日: str, 版: str) -> dict:
     """確認ページの答え（qa-html/2）を、問いの鍵で質問と回答の行へ戻す。
 
     行たち＝その確認ページの問いの質問と回答の行（シートの今の行。送り直しで足した行があればそれも）。
     答え＝1 送信か送信の並び（古い順）。1 送信は qa-html/2 の JSON・写す形の貼り戻しの字・送る形のフォームの値のどれか。
-    版＝今配っている版の字（`版の字`・任意）。答えの版が違えば 回答 に「古い版」の印を付ける。
+    版＝今配っている版の字（`版の字`・分けた枚はその枚の版の字）。必ず渡す（省く・None・空・版の字の形でない時は赤＝古い版かを
+    見ずに貼らない）。答えの版が今より前・ほかの枚・版の無い答えは 回答 に「古い版」の印を付け、今より新しい版・別の支給月の版は赤。
 
     返す物:
       受付たち: 1 送信 1 行（受付番号・版・古い版・回答日）＝送り直しは新しい行（前の受付を消さない）。
@@ -1069,6 +1138,10 @@ def 貼り戻し(行たち: list[dict], 答え, 回答日: str, 版: str | None 
         表として読む時は問いの番号ごとに一番下の行が正。
       全体の補足・知らせ・赤（1 送信でも読めなければ全部を返さない＝赤を直してから全部を貼り直す）。
     回答 の字: 「<答え>[ ／ 補足: …] ／ 受付: <受付番号>（版 <版>[・古い版]）」。分からない は「分からない」。"""
+    if not isinstance(版, str) or not _版の字の形.fullmatch(版):
+        return {"受付たち": [], "行たち": [], "全体の補足": "", "知らせ": [],
+                "赤": [f"今配っている版の字（版の字 `YYYY.MM-v<n>`・分けた枚は `…-v<n>-<枚>`）を 版 で渡す。渡さないと古い版の答えを"
+                      f"新しい答えの下に足し、一番下の行が正の読みで新しい答えを上書きする（受けた物: {版!r}）"]}
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(回答日)):
         return {"受付たち": [], "行たち": [], "全体の補足": "", "知らせ": [], "赤": [f"回答日 {回答日!r} は YYYY-MM-DD でない"]}
     送信たち = 答え if isinstance(答え, list) else [答え]
@@ -1089,9 +1162,10 @@ def 貼り戻し(行たち: list[dict], 答え, 回答日: str, 版: str | None 
         if 外:
             赤.append(f"受付 {p['receipt']}: 配った問いに無い鍵 {sorted(set(外))}（問いの行を配った時の物にそろえて渡す）")
             continue
-        古い = bool(版) and p["version"] != 版
-        if not 版:
-            知らせ.append(f"受付 {p['receipt']}: 今の版が渡されていない（古い版かを見ていない）")
+        古い, 版の赤 = 答えの版(p["version"], 版)
+        if 版の赤:
+            赤.append(f"受付 {p['receipt']}: {版の赤}")
+            continue
         受付たち.append({"受付番号": p["receipt"], "版": p["version"], "古い版": 古い, "回答日": 回答日})
         印 = f"受付: {p['receipt']}（版 {p['version'] or '無し'}{'・古い版' if 古い else ''}）"
         if p["free"]:
@@ -1150,7 +1224,7 @@ def _口(名: str, 入力: dict):
     if 名 == "検査":
         return {"赤": 問いの検査(入力["問い"], 入力.get("内部の言葉", ()))}
     if 名 == "貼り戻し":
-        return 貼り戻し(入力["問い"], 入力["答え"], 入力["回答日"], 入力.get("版"))
+        return 貼り戻し(入力["問い"], 入力["答え"], 入力["回答日"], 入力.get("版"))   # 版を省くと赤（既定の空を畳んだ）
     if 名 == "管理表の行":
         return 管理表の行(**入力)
     raise SystemExit(f"口 {名!r} は 作る・検査・貼り戻し・管理表の行 のどれか")

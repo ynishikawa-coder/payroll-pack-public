@@ -3,7 +3,8 @@
 - 見張り: 期待の写し（見張り_期待.json）は HTML の骨（問いの箱の鍵・形・まとまり・問い・分かっている事・選択肢・決まる事）と名と版。
   骨や名を変える時は、同じ PR で写しを直す（黙って変わらないための見張り）。
 - 往復: 作る → 答えの JSON（qa-html/2）と貼り戻しの字とフォームの値 → 貼り戻し で、問いの鍵で質問と回答の行へ戻る。
-- 型の検査: 環境に `QA_HTML_CHECK`（qa-html の check.mjs の path）と node があれば、作った HTML に当てて緑を見る（無ければ skip）。
+- 型の検査: 土台の qa-html の check.mjs（CI は `QA_HTML_CHECK`・窓は入った docs-kit）と node があれば、作った HTML に当てて緑を見る（無ければ skip）。
+- 写さない: 型・検査は repo に写さず土台の正本を直に読む（写しが戻ると赤）。答えの形は土台の `check.mjs --answer` で照らす。
 """
 import hashlib
 import importlib.util
@@ -151,8 +152,9 @@ def _型の所(t: str, 名: str) -> str:
     return re.search(f"<!--{名}-->(.*?)<!--/{名}-->", t, re.S).group(1)
 
 
-def test_型の動かない所は雛形のまま():
-    雛形 = (根 / "確認ページ" / "雛形.html").read_text(encoding="utf-8")
+@pytest.mark.skipif(not qa_htmlの検査.在る, reason=qa_htmlの検査.無い訳)
+def test_型の動かない所は土台の型のまま():
+    雛形 = subprocess.run(["node", qa_htmlの検査.道具(), "--template"], capture_output=True, text=True).stdout
     h = 作る()["html"]
     for 名 in ("qa:css", "qa:js"):
         assert _型の所(h, 名) == _型の所(雛形, 名)
@@ -160,6 +162,39 @@ def test_型の動かない所は雛形のまま():
     素 = lambda t: re.sub(r'(<p class="next">).*?(</p>)', r"\1…\2", _型の所(t, "qa:foot"))
     assert 素(h) == 素(雛形)
     assert '<p class="next">いただいた答えで給与を計算し、結果をお送りします。</p>' in h
+
+
+def test_型と検査の写しを_repo_に置かない():
+    """qa-html の型（template.html）と検査（check.mjs）は土台の正本を直に読む。写しを戻すと赤（前は 確認ページ/雛形.html に写していた）。"""
+    写し = []
+    for f in 根.rglob("*"):
+        if ".git" in f.parts or not f.is_file() or f.suffix not in (".html", ".htm", ".mjs", ".js"):
+            continue
+        t = f.read_text(encoding="utf-8", errors="ignore")
+        if ("<!--qa:css-->" in t and "<!--/qa:js-->" in t) or ("export function checkPage" in t and "export const RULES" in t):
+            写し.append(str(f.relative_to(根)))
+    assert 写し == [], f"qa-html の型か検査の写しが在る（土台の正本を直に読む）: {写し}"
+
+
+def test_型を土台から見つけられなければ止まる(tmp_path, monkeypatch):
+    monkeypatch.delenv("QA_HTML_CHECK", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))          # 台帳が無い
+    with pytest.raises(FileNotFoundError, match="見つからない"):
+        口.qa_htmlの道具()
+    台帳 = tmp_path / "plugins" / "installed_plugins.json"
+    台帳.parent.mkdir()
+    for 版 in ("aaa", "bbb"):   # 2 つに割れる（別の版の docs-kit が 2 つ入っている）＝どれの型か決まらない
+        (tmp_path / 版 / "skills" / "qa-html").mkdir(parents=True)
+        (tmp_path / 版 / "skills" / "qa-html" / "check.mjs").write_text("//", encoding="utf-8")
+    台帳.write_text(json.dumps({"plugins": {"docs-kit@a": [{"installPath": str(tmp_path / "aaa")}],
+                                          "docs-kit@b": [{"installPath": str(tmp_path / "bbb")}]}}), encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="割れている"):
+        口.qa_htmlの道具()
+    台帳.write_text(json.dumps({"plugins": {"docs-kit@a": [{"installPath": str(tmp_path / "aaa")}]}}), encoding="utf-8")
+    assert 口.qa_htmlの道具() == tmp_path / "aaa" / "skills" / "qa-html" / "check.mjs"
+    monkeypatch.setenv("QA_HTML_CHECK", str(tmp_path / "無い.mjs"))
+    with pytest.raises(FileNotFoundError, match="QA_HTML_CHECK の file が無い"):
+        口.qa_htmlの道具()
 
 
 def test_宛先と色と宛名():
@@ -222,7 +257,7 @@ def test_1枚は前半が会社の決まりで後半が原本の2部():
 def test_全問に分からないを最後に置き選択肢は中身の見出し():
     for b in 骨(作る()["html"])["箱"]:
         値s = [x[0] for x in b["選択肢"]]
-        assert 値s[-1] == "__unknown__" and b["選択肢"][-1][1] == "分からない・社内で確かめてから答える"
+        assert 値s[-1] == "__unknown__" and b["選択肢"][-1][1] == "分からない・確かめてから答える"
         assert 値s.count("__unknown__") == 1 and len(set(値s)) == len(値s)
         assert all(re.fullmatch(r"[A-Za-z0-9_]+", v) for v in 値s)
         assert not any(re.match(r"\s*[A-Za-z]\s", x[1]) for x in b["選択肢"])
@@ -235,8 +270,7 @@ def test_JSのない端末でも答えずに送れない():
         assert len(re.findall(f'name="{鍵}" value="[^"]+" required', h)) == 1
 
 
-@pytest.mark.skipif(not (os.environ.get("QA_HTML_CHECK") and shutil.which("node")),
-                    reason="QA_HTML_CHECK（qa-html の check.mjs の path）か node が無い")
+@pytest.mark.skipif(not qa_htmlの検査.在る, reason=qa_htmlの検査.無い訳)
 @pytest.mark.parametrize("用, 宛先", [("毎月", "send"), ("毎月", "copy"), ("立ち上げ", "artifact")])
 def test_qa_htmlの検査が緑(tmp_path, 用, 宛先):
     f = tmp_path / "確認.html"
@@ -269,8 +303,7 @@ def test_見込みの枠と先に決めておきたい事を型の形で出す()
     assert 中.index('class="opts"') < 中.index('class="estimate"') and "tag-rec" not in 中
 
 
-@pytest.mark.skipif(not (os.environ.get("QA_HTML_CHECK") and shutil.which("node")),
-                    reason="QA_HTML_CHECK（qa-html の check.mjs の path）か node が無い")
+@pytest.mark.skipif(not qa_htmlの検査.在る, reason=qa_htmlの検査.無い訳)
 def test_qa_htmlの検査が緑_見込みと先に決めておきたい事(tmp_path):
     f = tmp_path / "確認.html"
     f.write_text(口.作る({"今ある名": [], "履歴にある名": [], "組": "作り物の組", "支給月": "2099.04支給", "用": "毎月", "問い": _見込みと後の問い(),
@@ -315,7 +348,7 @@ def test_往復_作る_答えのJSON_貼り戻しで鍵の行へ戻る():
     h = 作る(宛先="copy")["html"]
     版 = 骨(h)["版"]
     p = 答えのJSON(h, {"Q209904_01": "末日", "Q209904_02": "休憩の分も入れて計算する",
-                      "Q209904_03": "分からない・社内で確かめてから答える", "Q209904_04": "読んだとおり"},
+                      "Q209904_03": "分からない・確かめてから答える", "Q209904_04": "読んだとおり"},
                   {"Q209904_02": "夜は 22 時から", "Q209904_03": "店長に聞けば分かります"}, "よろしく")
     印 = f"受付: R990402-7KQ4（版 {版}）"
     期待 = [
@@ -386,9 +419,9 @@ def test_貼り戻しの字は最後のqa_jsonの行とCRLFも読む():
     一 = 答えのJSON(h, {"Q209904_01": "15 日"}, 受付="R990402-AAAA")
     二 = 答えのJSON(h, {"Q209904_01": "末日"}, 受付="R990403-BBBB")
     字 = 貼り戻しの字(h, 一) + "\n\n" + 貼り戻しの字(h, 二)
-    r = 口.貼り戻し(問い, 字, "2099-04-03")
+    r = 口.貼り戻し(問い, 字, "2099-04-03", 骨(h)["版"])
     assert [x["受付番号"] for x in r["受付たち"]] == ["R990403-BBBB"]
-    r = 口.貼り戻し(問い, 貼り戻しの字(h, 一).replace("\n", "\r\n"), "2099-04-03")
+    r = 口.貼り戻し(問い, 貼り戻しの字(h, 一).replace("\n", "\r\n"), "2099-04-03", 骨(h)["版"])
     assert r["赤"] == [] and r["行たち"][0]["回答"].startswith("15 日 ／ ")
 
 
@@ -396,7 +429,7 @@ def test_フォームの値に配る口の印があっても読む():
     h = 作る()["html"]
     答え = {"Q209904_01": _値(h, "Q209904_01", "15 日"), "token": "作り物のトークン", "sheet": "作り物のシート",
             "__版__": 骨(h)["版"], "__受付番号__": "R990402-AAAA"}
-    r = 口.貼り戻し(問い, 答え, "2099-04-02")
+    r = 口.貼り戻し(問い, 答え, "2099-04-02", 骨(h)["版"])
     assert r["赤"] == [] and [x["問いの番号"] for x in r["行たち"]] == ["Q209904-01"]
 
 
@@ -411,10 +444,41 @@ def test_版が違えば古い版の印():
     assert r["行たち"][0]["回答"].startswith("20 日 ／ ") and r["知らせ"]
 
 
+def test_貼り戻しは今の版を必ず受け_今より新しい版と別の月の版の答えは貼らない():
+    """前の値の既定が空と同じ根（2026-11-19）: 版を省くと古い版の印を付けずに貼り、版は同じか違うかだけで大小を見なかった。"""
+    h = 作る()["html"]
+    p = 答えのJSON(h, {"Q209904_01": "15 日"}, 版="2099.04-v2")
+    for 版 in (None, "", "v2", 2):
+        r = 口.貼り戻し(問い, p, "2099-04-02", 版)
+        assert r["行たち"] == [] and "版 で渡す" in r["赤"][0], 版
+    with pytest.raises(TypeError):
+        口.貼り戻し(問い, p, "2099-04-02")   # 既定の None を畳んだ
+    for 今, 古い, 赤 in (("2099.04-v2", False, ""), ("2099.04-v3", True, ""), ("2099.04-v10", True, ""),
+                       ("2099.04-v2-1", True, ""), ("2099.04-v1", None, "より新しい"), ("2099.05-v2", None, "別の支給月")):
+        r = 口.貼り戻し(問い, p, "2099-04-02", 今)
+        if 赤:
+            assert r["行たち"] == [] and 赤 in r["赤"][0], 今
+        else:
+            assert r["赤"] == [] and r["受付たち"][0]["古い版"] is 古い, 今
+
+
 def test_回答日の形が違えば赤():
     h = 作る()["html"]
-    r = 口.貼り戻し(問い, 答えのJSON(h, {"Q209904_01": "15 日"}), "4/2")
+    r = 口.貼り戻し(問い, 答えのJSON(h, {"Q209904_01": "15 日"}), "4/2", 骨(h)["版"])
     assert r["行たち"] == [] and "YYYY-MM-DD" in r["赤"][0]
+
+
+@pytest.mark.skipif(not qa_htmlの検査.在る, reason=qa_htmlの検査.無い訳)
+def test_受ける答えの形は土台の答えの形の正本と同じ():
+    """貼り戻しが受ける形（口.答えの形・試験の 答えのJSON）を土台の check.mjs --answer で照らす。土台の形が変わればここが赤。"""
+    h = 作る(宛先="copy")["html"]
+    p = 答えのJSON(h, {"Q209904_01": "末日"}, {"Q209904_01": "作り物のひとこと"})
+    assert p["form"] == 口.答えの形
+    r = qa_htmlの検査.答えを照らす(p)
+    assert r.returncode == 0, r.stdout + r.stderr
+    # 注入: 写した古い形の名・知らない鍵は土台が赤にする
+    for 悪い in ({**p, "form": "qa-html/1"}, {**p, "sheet": "x"}):
+        assert qa_htmlの検査.答えを照らす(悪い).returncode == 1
 
 
 def test_貼り戻しは読めない物を赤にする():
@@ -428,7 +492,7 @@ def test_貼り戻しは読めない物を赤にする():
         ({**p, "receipt": "R 1"}, "受付番号"),
         ("qa-json: {壊れた", "qa-json の行が無い"),
     ]:
-        r = 口.貼り戻し(問い, 答え, "2099-04-02")
+        r = 口.貼り戻し(問い, 答え, "2099-04-02", 骨(h)["版"])
         assert r["行たち"] == [] and any(赤の字 in x for x in r["赤"]), (答え, r["赤"])
 
 
@@ -655,7 +719,7 @@ def test_形ごとに足す選択肢():
     assert 箱["Q209904_05"][-2][:2] == ["other", "ほかの答え"]
     assert 箱["Q209904_01"][-2][:2] == ["other", "別の決め方"]
     assert 箱["Q209904_03"][-2][:2] == ["none", "当てはまらない"]   # 資料の外の事実は「当てはまらない」
-    assert [x[1] for x in 箱["Q209904_04"]][1:] == ["ほかにある・違う", "当てはまらない", "分からない・社内で確かめてから答える"]   # ひとことの選択肢があれば「ほかの答え」を足さない
+    assert [x[1] for x in 箱["Q209904_04"]][1:] == ["ほかにある・違う", "当てはまらない", "分からない・確かめてから答える"]   # ひとことの選択肢があれば「ほかの答え」を足さない
     赤 = 口.問いの検査([{**三つ, "質問": "夜勤の回数が足りない月は、どちらにしますか"}])
     assert any("「どちら」" in x for x in 赤), 赤
     # fact の行に「当てはまらない」が書いてあっても 1 つだけ（形の最後）
@@ -683,7 +747,7 @@ def test_行が自分で別の決め方を渡しても印を付け形の足し�
                         {"見出し": "別の決め方", "変わる事": "決め方を伺ってから締めを直します"}]}
     h = 口.作る({"今ある名": [], "履歴にある名": [], "組": "作り物の組", "支給月": "2099.04支給", "用": "毎月", "問い": [*問い, 自分で], "読んだ資料": 読んだ})["html"]
     選 = {b["鍵"]: b["選択肢"] for b in 骨(h)["箱"]}["Q209904_07"]
-    assert [x[1] for x in 選] == ["末日", "別の決め方", "分からない・社内で確かめてから答える"]
+    assert [x[1] for x in 選] == ["末日", "別の決め方", "分からない・確かめてから答える"]
     assert 選[1][-1] is True
 
 

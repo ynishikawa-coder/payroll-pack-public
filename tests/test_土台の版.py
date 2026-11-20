@@ -3,6 +3,8 @@
 workflow が土台を取る所（actions/checkout の repository か git clone の URL）は、印を字で書かず、
 同じ job の「土台の版を読む」段（id af）が json から読んだ値（steps.af.outputs.ref）を使う。
 印が 2 か所に書かれて食い違う（前は tag.yml が v0.3.0・public-mirror.yml が v0.4.9）のを入れない形にする。
+版の印を付けない git clone（土台の main の先端）は通す: 土台は版を指す仕組みを畳み main の先端を配る（土台 PR #34・オーナー決定
+2026-11-19）。ci.yml の確認ページの型と検査はこの形で取る（窓が入れる土台と同じ物で照らす）。
 """
 import json
 import re
@@ -33,7 +35,9 @@ def 外れ(根: Path) -> list[str]:
                 if not 読む鍵:
                     out.append(f"{p.name}:{i + 1}: 土台の版を読む段が無い")
             elif re.search(rf"github\.com/\S+/{_土台}", 行) and "git clone" in 行:
-                if "--branch" not in 行 or _印.search(行) or not 読む鍵:
+                if "--branch" not in 行 and not _印.search(行):
+                    continue          # 版を付けない＝土台の main の先端
+                if _印.search(行) or not 読む鍵:
                     out.append(f"{p.name}:{i + 1}: clone の版が版の表を通っていない")
     return out
 
@@ -71,7 +75,8 @@ def test_印を字で書いたworkflowを見つける(tmp_path):
     (w / "b.yml").write_text(
         "steps:\n"
         "  - run: python3 -c 'json.load(open(\".github/workflows/土台の版.json\", encoding=\"utf-8\"))[\"無い鍵\"]'\n"
-        "  - run: git clone --branch v0.4.9 https://github.com/持ち主/agent-foundation-public x\n", encoding="utf-8")
+        "  - run: git clone --branch v0.4.9 https://github.com/持ち主/agent-foundation-public x\n"
+        "  - run: git clone -q --depth 1 https://github.com/持ち主/agent-foundation-public y\n", encoding="utf-8")
     assert 外れ(tmp_path) == [
         "a.yml:4: checkout の ref が版の表を通っていない: ref: v0.3.0",
         "a.yml:4: 土台の版を読む段が無い",

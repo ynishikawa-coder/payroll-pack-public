@@ -72,9 +72,25 @@ def test_命令の照らすと起票の案(tmp_path):
     f = tmp_path / "m.json"
     f.write_text(json.dumps({"課題": [], "課題の id": [], "閉じた状態": ["完了"], "月の本文": "- 端数を表せない"}, ensure_ascii=False),
                  encoding="utf-8")
-    r = subprocess.run([sys.executable, str(BIN / "穴の照らし.py"), "照らす", str(f), "--支給月", "2099.01支給"],
-                       capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(BIN / "穴の照らし.py"), "照らす", str(f), "--支給月", "2099.01支給",
+                        "--パック", str(根)], capture_output=True, text=True)
     assert r.returncode == 2 and "起票していない穴" in r.stdout
-    r = subprocess.run([sys.executable, str(BIN / "穴の照らし.py"), "起票の案", str(f), "--支給月", "2099.01支給"],
-                       capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(BIN / "穴の照らし.py"), "起票の案", str(f), "--支給月", "2099.01支給",
+                        "--パック", str(根)], capture_output=True, text=True)
     assert r.returncode == 0 and json.loads(r.stdout)[0]["題"].startswith("課題: 2099.01支給")
+
+
+def test_字の揺れをそろえて照らす_全角の頭と幅の無い字と年月の書き方():
+    # 壊す: 字のそのままの一致だと、全角の「課題：」・頭の空白・幅の無い字を挟んだ穴の語・「2099年1月」の題が数えられず通った（台帳 束 K3）
+    rows = [{"題": "　課題：２０９９年１月 端数", "状態": "進行中"}, {"題": "課\u200b題: 2099/02 別の月", "状態": "進行中"},
+            {"題": "課題: 2099.01支給 済んだ", "状態": " 完了 "}]
+    assert [r["題"] for r in H.開いた課題(rows, "2099.01支給", ["完了"])] == ["　課題：２０９９年１月 端数"]
+    assert [r["題"] for r in H.開いた課題(rows, "2099.02支給", ["完了"])] == ["課\u200b題: 2099/02 別の月"]
+    assert H.起票していない穴("- 端数の決まりを表\u200bせない", set()) == ["- 端数の決まりを表\u200bせない"]
+    assert H.起票していない穴("- 休憩の境が直されて　いない", set())
+    assert H.拾う("ｘ 穴 が在る\n仕組み: 穴の\u200b照らし") == ["ｘ 穴 が在る"]
+
+
+def test_支給月が読めない時は照らせない():
+    m = {"課題": [{"題": "課題: x", "状態": "進行中"}], "課題の id": [], "閉じた状態": ["完了"], "月の本文": ""}
+    assert any("照らせない" in r for r in H.課題と穴の赤(m, "来月"))

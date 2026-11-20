@@ -9,8 +9,8 @@
   1. シートの道具の書き込み（update_values・append_values・batch_clear_values・update_formulas・update_spreadsheet・
      insert_dimension・copy_sheet_to_another_spreadsheet）で、宛先の本の名が出す物の名の頭（パックの出口が知る物
      `<物>_`＝取り込み_・賞与の取り込み_・支給控除一覧_…・有給休暇管理表_）で始まる・出荷の口の印がある
-  2. 同じ書き込みで、宛先の名に `管理表` を含み、タブ「月の状況」の 取り込み・納品 の欄に掛かる／止まりの理由 の欄に
-     `今の版` を書く／範囲の無い構造の書き込み
+  2. 同じ書き込みで、宛先の名に `管理表` を含み、回の状況のタブ（月の状況・賞与の状況…＝パックの管理表の型で「回」を持つ
+     タブの全部・パックの場所.守るタブたち）の 取り込み・納品 の欄に掛かる／止まりの理由 の欄に `今の版` を書く／範囲の無い構造の書き込み
   3. Drive の道具の create_file・copy_file で名が 1 の頭で始まる物、update_file・copy_file の元が 1 の本
   4. Bash で、殻が渡した「置き換える命令」の名から次の区切りまでの引数に replace が在り（例 `<命令> replace <id>`）、宛先が
      1 の本。命令の文は字で分けて見る（replace の字が在るだけでは止めない）。分けられない文・見分けられない字は止める
@@ -18,6 +18,8 @@
      （確認ページ/確認ページ.py の 名の形）でない・置き場が違う（同じ所の 置き場の名たち＝名の 組 が 事務所 なら 事務所 の
      フォルダ〔00_事務所〕・ほかは会社のフォルダ〔8_確認事項〕。正本は docs/設計/Drive の型.md §3 の表）
 宛先の名が引けない時は止める（引けない＝見分けられない）。名を引く口が「見えない」と返した本（出荷の口に見えない本）は通す。
+名・タブ・見出し・値の字は、パックの字のそろえ方の正本（芯/字.py・口の 字）でそろえてから比べる（頭の空白・全角・幅の無い字で
+抜けない）。そろえ方が渡らない口は見分けられない＝止める。
 名を引く・見出しを引く手は殻が渡す（口）。ここは Drive を開かない。Python 3 の標準ライブラリだけ。
 """
 from __future__ import annotations
@@ -32,7 +34,6 @@ from typing import Callable
 構造 = ("update_spreadsheet", "batch_clear_values", "insert_dimension")
 Driveの書き込み = ("create_file", "copy_file", "update_file")
 管理表の語 = "管理表"
-管理表のタブ = "月の状況"
 出荷の欄 = ("取り込み", "納品")
 今の版の欄, 今の版の頭 = "止まりの理由", "今の版"
 確認ページの頭たち = ("確認事項_", "下書き_確認事項_", "確認ページ_", "下書き_確認ページ_")   # 今の形と前の形（前の形は名の形に合わない＝止める）
@@ -47,12 +48,15 @@ class 口:
     印: str = ""                                          # 出荷の口が置いた本の印（appProperties の鍵・値 "1"）
     置き換える命令: tuple[str, ...] = ()                   # Bash の `<命令> replace <id>` の命令の名（末尾で見る）
     確認ページの形: tuple[str, dict] | None = None         # (名の正規表現, {"<会社>": フォルダの名, "事務所": フォルダの名})。パックに無い版では None
+    守るタブ: tuple[str, ...] = ()                        # 管理表の回の状況のタブの名（パックの場所.守るタブたち）。空＝見分けられない＝止める
+    字: object = None                                     # 字のそろえ方の正本（パックの 芯.字）。無い＝見分けられない＝止める
     引いた: list = field(default_factory=list)
 
 
 def 出す物の本か(m: dict, k: 口) -> bool:
     名 = str(m.get("name", ""))
-    return any(名.startswith(h) for h in k.名の頭たち) or bool(k.印 and (m.get("appProperties") or {}).get(k.印) == "1")
+    印 = (m.get("appProperties") or {}).get(k.印) if k.印 else None
+    return k.字.頭が(名, k.名の頭たち) or bool(k.印 and str(印).strip() == "1")
 
 
 def _列(letters: str) -> int:
@@ -85,6 +89,8 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
     """止める訳（止めないなら None）。"""
     short = tool.rsplit("__", 1)[-1]
     args = args if isinstance(args, dict) else {}
+    if 見るか(tool) and getattr(k.字, "そろえる", None) is None:
+        return "字のそろえ方（パックの 芯/字.py）が渡らない＝名を見分けられない"
     if tool == "Bash":
         return _bash(str(args.get("command", "")), k)
     if short in Driveの書き込み:
@@ -103,7 +109,7 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
         return f"書く先の本（{sid}）の名が引けない＝出す物の本か管理表か見分けられない"
     if 出す物の本か(m, k):
         return f"出す物の本（{m.get('name')}）へ道具で直に書く"
-    if 管理表の語 not in str(m.get("name", "")):
+    if not k.字.含む(m.get("name", ""), 管理表の語):
         return None
     if short in 構造:
         return f"管理表（{m.get('name')}）の形を道具で変える・範囲を消す"
@@ -111,7 +117,9 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
     if "!" not in rng:
         return f"管理表（{m.get('name')}）へタブの名の無い範囲（{rng or '無い'}）で書く＝出荷の欄に掛かるか見分けられない"
     tab, a, b = 範囲を読む(rng)
-    if tab != 管理表のタブ:
+    if not k.守るタブ:
+        return f"管理表の守るタブ（回の状況のタブ）がパックから読めない＝{tab} が出荷の欄を持つタブか見分けられない"
+    if not any(k.字.同じ(tab, t) for t in k.守るタブ):
         return None
     try:
         h = list(k.見出しを引く(str(sid), tab) or [])
@@ -123,24 +131,23 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
     hi = len(h) - 1 if b is None else b
     if short == "append_values":
         lo, hi = 0, len(h) - 1
-    hit = [h[i] for i in range(lo, min(hi, len(h) - 1) + 1) if h[i] in 出荷の欄]
+    hit = [h[i] for i in range(lo, min(hi, len(h) - 1) + 1) if any(k.字.同じ(h[i], x) for x in 出荷の欄)]
     if hit:
-        return f"管理表の {tab} の出荷の欄（{'・'.join(hit)}）を道具で直に書く"
-    if 今の版の欄 in h:
-        j = h.index(今の版の欄)
+        return f"管理表の {tab} の出荷の欄（{'・'.join(map(str, hit))}）を道具で直に書く"
+    for j in [i for i, x in enumerate(h) if k.字.同じ(x, 今の版の欄)]:
         if lo <= j <= hi:
             for row in (args.get("values") or []) + (args.get("formulas") or []):
                 i = j - lo
-                if isinstance(row, list) and i < len(row) and 今の版の頭 in str(row[i]):
+                if isinstance(row, list) and i < len(row) and k.字.含む(row[i], 今の版の頭):
                     return f"管理表の {今の版の欄} に「{今の版の頭}」を道具で直に書く"
     return None
 
 
 def _drive(short: str, args: dict, k: 口) -> str | None:
     名 = str(args.get("name") or args.get("title") or (args.get("metadata") or {}).get("name") or "")
-    if any(名.startswith(h) for h in k.名の頭たち):
+    if k.字.頭が(名, k.名の頭たち):
         return f"Drive の道具で出す物の本（{名}）を作る"
-    if 名.startswith(確認ページの頭たち):
+    if k.字.頭が(名, 確認ページの頭たち):
         外れ = 確認ページの名の外れ(名, args, k)
         if 外れ:
             return 外れ

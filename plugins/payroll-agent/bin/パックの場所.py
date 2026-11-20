@@ -1,14 +1,19 @@
 """給与エージェントの照らしが読むパックの 1 か所（出口の名の形・証明を照らす口・前の答えを照らす口）を探して読む。
 
 照らしの決まり（出す物の名の形・証明の形）はパックの出口に 1 か所だけ在る。ここは写さず、パックの dir を見つけてそこから読む。
-探す順: 引数 → 環境 PAYROLL_PACK_DIR（確認ページ/前の答え.py と同じ名）→ この file から上へ辿って `出口/名と版.py` が在る dir。
-見つからない時は None（呼ぶ側が止める＝知らない決まりで照らさない）。Python 3 の標準ライブラリだけ。
+探す順: 引数 → 環境 PAYROLL_PACK_DIR（確認ページ/前の答え.py と同じ名）→ この file から上へ辿って `出口/名と版.py` が在る dir
+→ この plugin を入れた目録の複製（Claude Code が plugin を入れた所 `<plugins>/cache/<目録>/<plugin>/<版>/` の隣の
+`<plugins>/marketplaces/<目録>/`）で、その複製の HEAD の commit がこの plugin の版（commit の頭）と同じ時だけ
+（plugin とパックは同じ版の印を読む＝違う版の複製は使わない）。
+見つからない時は None（呼ぶ側が止める＝知らない決まりで照らさない）。その時の知らせの文は `分からない訳` の 1 か所。Python 3 の標準ライブラリだけ。
 """
 from __future__ import annotations
 
 import importlib
 import importlib.util
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -23,7 +28,45 @@ def 探す(引数: str | None = None) -> Path | None:
     for p in Path(__file__).resolve().parents:
         if (p / 目印).is_file():
             return p
-    return None
+    return 入れた目録()
+
+
+def _目録の複製(here: Path | None = None) -> tuple[Path, str, str | None] | None:
+    """この plugin を入れた目録の複製と、plugin の版・複製の HEAD。plugin が目録から入っていない・複製が無ければ None。"""
+    up = (here or Path(__file__)).resolve().parents
+    if len(up) < 6 or up[4].name != "cache":
+        return None
+    版, 目録 = up[1].name, up[3].name
+    複製 = up[5] / "marketplaces" / 目録
+    if not (複製 / 目印).is_file() or not re.fullmatch(r"[0-9a-f]{7,40}", 版):
+        return None
+    try:
+        r = subprocess.run(["git", "-C", str(複製), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return 複製, 版, None
+    return 複製, 版, (r.stdout.strip() if r.returncode == 0 else None)
+
+
+def 入れた目録(here: Path | None = None) -> Path | None:
+    """この plugin を入れた目録の複製（同じ commit の時だけ）。plugin が目録から入っていない・複製が無い・版が違えば None。"""
+    x = _目録の複製(here)
+    return x[0] if x and x[2] and x[2].startswith(x[1]) else None
+
+
+def 分からない訳(何が: str, 引数: str | None = None, here: Path | None = None) -> str:
+    """パックの場所が分からない時の知らせの文の正本（照らしの道具と見張りはここを使う＝文を写さない）。
+    何が＝読めない物と、そのため止めた・照らしていない事。なぜ分からないかと、直し方（plugin を入れ直す・PAYROLL_PACK_DIR）を必ず言う。"""
+    渡した = 引数 or os.environ.get("PAYROLL_PACK_DIR")
+    x = _目録の複製(here)
+    if 渡した:
+        なぜ = f"渡されたパックの dir {渡した}（--パック か環境 PAYROLL_PACK_DIR）に {目印} が無い"
+    elif x and x[2] and not x[2].startswith(x[1]):
+        なぜ = (f"plugin を入れた目録の複製の版（{x[2][:12]}）が plugin の版（{x[1]}）と違う"
+              "（目録の複製だけが後から更新された）")
+    else:
+        なぜ = "環境 PAYROLL_PACK_DIR が無く、plugin を入れた同じ版の目録の複製も見つからない"
+    return (f"パックの場所が分からない（{なぜ}）＝{何が}。直し方: plugin payroll-agent を入れ直す"
+            "（目録の複製と同じ版にする）か、環境 PAYROLL_PACK_DIR（道具なら --パック）に同じ版のパックの dir を渡す")
 
 
 def 読む(パック: Path, 名: str):
@@ -53,6 +96,18 @@ def 番号の形たち(パック: Path) -> tuple[str, ...]:
 def 名の頭たち(パック: Path) -> tuple[str, ...]:
     """出荷の口だけが書く本の名の頭（取り込み_・賞与の取り込み_・支給控除一覧_…・有給休暇管理表_ ほか）。長い順。"""
     return tuple(sorted({f"{物}_" for 物 in 出す物の置き場(パック)}, key=len, reverse=True))
+
+
+def 字の口(パック: Path):
+    """字のそろえ方の正本（パックの 芯/字.py）。名・頭・語で意味を決める照らしは、両側をこれでそろえてから比べる（写さない）。"""
+    return 読む(パック, "芯.字")
+
+
+def 守るタブたち(パック: Path) -> tuple[str, ...]:
+    """管理表の回の状況のタブ（月の状況・賞与の状況…＝管理表の型で「回」を持つタブの全部）。出荷の欄はこのタブたちに在る。
+    正本はパックの 管理表/管理表.py の 型（初期設定/型.json）。読めない時は例外。"""
+    管理表 = 読む(パック, "管理表.管理表")
+    return tuple(t["タブ"] for t in 管理表.型()["タブ"] if t.get("回") is not None)
 
 
 def 確認ページの名の形(パック: Path):

@@ -22,26 +22,16 @@ jobs:
           python-version: "3.12"
       - name: pytest を入れる
         run: python -m pip install pytest
-      # 確認ページの検査（土台の skill qa-html の check.mjs）を当てるため node を入れ、check.mjs を土台の版の印で取る。
-      # check.mjs は repo に写さない（土台の物は窓の環境が入れる決まり）。repo の外（runner の作業場）に置き、検査の入口が
-      # repo の file として読まないようにする。public なので秘密は要らない。
+      # 確認ページの型・検査・答えの形（土台の skill qa-html の check.mjs）を当てるため node を入れ、土台の main の先端から取る。
+      # 型も検査も repo に写さない（土台の qa-html の SKILL.md §配り方）。版の印で止めない＝窓が入れる土台と同じ main の先端で照らす。
+      # repo の外（runner の作業場）に置く。public なので秘密は要らない。
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # 土台の版の印は .github/workflows/土台の版.json の「土台」の 1 か所から読む（ここに印を書かない）。
-      - name: 土台の版を読む
-        id: af
-        run: >-
-          python3 -c 'import json, re, sys;
-          v = json.load(open(".github/workflows/土台の版.json", encoding="utf-8"))["土台"];
-          ok = re.fullmatch(r"v[0-9]+[.][0-9]+[.][0-9]+", v);
-          print("ref=" + v) if ok else sys.exit("✗ 土台の版の印の形でない: " + v)' >> "$GITHUB_OUTPUT"
-      - name: 確認ページの検査の道具を取る
-        env:
-          AF_REF: ${{ steps.af.outputs.ref }}
+      - name: 確認ページの型と検査を土台の main から取る
         run: |
           set -euo pipefail
-          git clone -q --depth 1 --branch "${AF_REF}" https://github.com/ynishikawa-coder/agent-foundation-public "${RUNNER_TEMP}/agent-foundation-public"
+          git clone -q --depth 1 https://github.com/ynishikawa-coder/agent-foundation-public "${RUNNER_TEMP}/agent-foundation-public"
           f="${RUNNER_TEMP}/agent-foundation-public/plugins/docs-kit/skills/qa-html/check.mjs"
           test -f "$f"
           echo "QA_HTML_CHECK=$f" >> "$GITHUB_ENV"

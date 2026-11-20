@@ -2,7 +2,7 @@
 """PreToolUse hook の入口: 止める見張り（../bin/止める見張り.py）の判定を呼び、止める時だけ deny を返す。判定はここに書かない。
 
 殻（各社のエージェント）が環境で渡す口:
-  PAYROLL_PACK_DIR            パックの dir（出す物の名の頭と確認ページの名の形を読む。無ければ plugin の上を辿る）
+  PAYROLL_PACK_DIR            パックの dir（出す物の名の頭と確認ページの名の形を読む。無ければ plugin の上を辿り、plugin を入れた同じ版の目録の複製を使う）
   PAYROLL_GUARD_LOOKUP_CMD    名を引く命令。`<命令> 名 <id>` → JSON {"name", "appProperties", "見えない"?}・
                               `<命令> 見出し <id> <タブ>` → JSON の 1 行目。0 でない終わり＝引けない（止める側）
   PAYROLL_SHIP_MARK           出荷の口が置いた本の印（appProperties の鍵）。無ければ名の頭だけで見る
@@ -52,7 +52,17 @@ def 口を組む(パック: Path) -> 見張り.口:
         印=os.environ.get("PAYROLL_SHIP_MARK", ""),
         置き換える命令=_置き換える命令(),
         確認ページの形=場所.確認ページの名の形(パック),
+        守るタブ=_読めれば(場所.守るタブたち, パック, ()),
+        字=_読めれば(場所.字の口, パック, None),
     )
+
+
+def _読めれば(読む, パック: Path, 無い時):
+    """読めない版のパックでは 無い時 の値（空・None）を渡す＝判定がその物を見分けられないと名指しして止める。"""
+    try:
+        return 読む(パック)
+    except Exception:  # noqa: BLE001
+        return 無い時
 
 
 def _拒む(訳: str) -> None:
@@ -76,13 +86,15 @@ def main(stdin=None) -> int:
         _拒む("給与の見張りの hook が入力を読めない＝見分けられないので止めた。もう一度打つ。続くなら plugin payroll-agent の hooks を見る")
         return 0
     tool = str(ev.get("tool_name", ""))
-    if tool == "AskUserQuestion":   # オーナーへの選択肢の画面の文: 番号だけの頼み・担当者へ聞く物を知らせる（止めない）
+    if tool == "AskUserQuestion":   # オーナーへの選択肢の画面の文: 種類の印の無い問い・番号だけの頼み・担当者へ聞く物を知らせる（止めない）
         パック = 場所.探す()
         try:
             形たち = 場所.番号の形たち(パック) if パック else None
         except Exception:  # noqa: BLE001  読めない＝番号は照らせないと知らせる（止めない）
             形たち = None
-        訳 = オーナーへの文.照らす(オーナーへの文.選択肢の画面の文(ev.get("tool_input") or {}), 形たち)
+        args = ev.get("tool_input") or {}
+        訳 = (オーナーへの文.印を照らす(args, オーナーへの文.許す印たち())
+             + オーナーへの文.照らす(オーナーへの文.選択肢の画面の文(args), 形たち, パック is not None))
         if 訳:
             _知らせる(訳)
         return 0
@@ -96,7 +108,7 @@ def main(stdin=None) -> int:
                     return 0
             except ValueError:
                 pass
-        _拒む("給与の見張り: パックの場所が分からない（環境 PAYROLL_PACK_DIR）＝出す物の名の形を読めないので書く道具を止めた")
+        _拒む("給与の見張り: " + 場所.分からない訳("出す物の名の形を読めないので書く道具を止めた"))
         return 0
     try:
         what = 見張り.判定(tool, ev.get("tool_input") or {}, 口を組む(パック))

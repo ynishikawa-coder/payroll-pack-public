@@ -30,9 +30,11 @@ def main(argv: list[str], runner=subprocess.run, stdin=None) -> int:
         print("質問と回答の表が渡されない（殻がタブ 質問 を読んで file に置き、--rows で渡す）＝照らせない", file=sys.stderr)
         return 2
     パック = 場所.探す(パック引数)
-    if パック is None or not (パック / 前の答えの口).is_file():
-        print(f"パックに前の答えを照らす口（{前の答えの口}）が無い・パックの場所が分からない（--パック か PAYROLL_PACK_DIR）＝照らせない",
-              file=sys.stderr)
+    if パック is None:
+        print(場所.分からない訳("前の答えを照らす口を読めないので照らせない", パック引数), file=sys.stderr)
+        return 2
+    if not (パック / 前の答えの口).is_file():
+        print(f"パック {パック} の版に前の答えを照らす口（{前の答えの口}）が無い＝照らせない（その口の在る版のパックを使う）", file=sys.stderr)
         return 2
     feed = None if "--questions" in argv else (stdin if stdin is not None else sys.stdin.read())
     r = runner([sys.executable, str(パック / 前の答えの口), *argv], input=feed, capture_output=True, text=True)

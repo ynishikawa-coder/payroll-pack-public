@@ -33,7 +33,8 @@ def 名を引く(fid):
 
 def 口(**kw):
     base = dict(名の頭たち=場所.名の頭たち(根), 名を引く=名を引く, 見出しを引く=lambda sid, tab: 見出し, 印="作り物の印",
-                置き換える命令=("作り物_upload.py",), 確認ページの形=場所.確認ページの名の形(根))
+                置き換える命令=("作り物_upload.py",), 確認ページの形=場所.確認ページの名の形(根),
+                守るタブ=場所.守るタブたち(根), 字=場所.字の口(根))
     base.update(kw)
     return W.口(**base)
 
@@ -218,10 +219,39 @@ def test_hookは確認ページの名の形が読めないパックでは確認�
     """注入: パックの写しの 確認ページ/確認ページ.py を読めない物にし、PAYROLL_PACK_DIR をそこへ向ける。"""
     import shutil
     pack = tmp_path / "pack"
-    shutil.copytree(根 / "出口", pack / "出口", ignore=shutil.ignore_patterns("__pycache__"))
+    for d in ("出口", "芯"):
+        shutil.copytree(根 / d, pack / d, ignore=shutil.ignore_patterns("__pycache__"))
     (pack / "確認ページ").mkdir()
     (pack / "確認ページ" / "確認ページ.py").write_text("raise RuntimeError('壊れた版')\n", encoding="utf-8")
     ev = json.dumps({"tool_name": "mcp__d__create_file", "tool_input": {"name": "確認事項_でたらめ.html"}})
     out = _hook(ev, PAYROLL_PACK_DIR=str(pack)).stdout
     assert '"deny"' in out and "名の形" in out
     assert '"deny"' in _hook(ev, PAYROLL_PACK_DIR=str(根)).stdout   # 正しいパックでも外れた名は止める
+
+
+def test_名とタブと見出しは字の揺れをそろえて見る():
+    # 壊す: 字のそのままの一致・startswith だと、頭に空白や全角の字のある本の名・賞与の状況のタブ・揺れた見出しへの
+    # 書き込みが止まらなかった（台帳 束 K3）
+    本["s5"] = {"name": " 取り込み＿作り物の会社_2099.01支給_v1"}
+    本["s6"] = {"name": "00_事務所_管\u200b理表"}
+    try:
+        assert j("g__update_values", spreadsheetId="s5", range="A1")
+        assert j("g__update_values", spreadsheetId="L1", range="'賞与の状況'!F2:F2", values=[["x"]])
+        assert j("g__update_values", spreadsheetId="s6", range="'月の状況'!F2:F2", values=[["x"]])
+        assert j("d__create_file", name="　支給控除一覧_雇用_x")
+        揺れ = [x if x != "納品" else "納　品" for x in 見出し]
+        k = 口(見出しを引く=lambda sid, tab: 揺れ)
+        assert W.判定("g__update_values", {"spreadsheetId": "L1", "range": "'月の状況'!I2:I2", "values": [["x"]]}, k)
+        assert W.判定("g__update_values", {"spreadsheetId": "L1", "range": "'月の状況'!L2:L2", "values": [["今の版：v2"]]}, k)
+        assert not j("g__update_values", spreadsheetId="L1", range="'月の状況'!A2:A2", values=[["x"]])
+    finally:
+        del 本["s5"], 本["s6"]
+
+
+def test_字のそろえ方か守るタブが渡らない口は止める():
+    assert "そろえ方" in j_口(口(字=None), "g__update_values", spreadsheetId="m1", range="A1")
+    assert "守るタブ" in j_口(口(守るタブ=()), "g__update_values", spreadsheetId="L1", range="'月の状況'!A2:A2")
+
+
+def j_口(k, tool, **args):
+    return W.判定(tool, args, k) or ""

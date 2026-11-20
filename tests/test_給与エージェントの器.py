@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from 名の字 import 束, 語たち  # 束の読みと字の揺れのそろえは 1 か所（tests/名の字.py）
+
 根 = Path(__file__).resolve().parent.parent
 データ = 根 / "tests" / "data"
 PLUGIN名 = "payroll-agent"
@@ -30,15 +32,6 @@ MARKET = 根 / ".claude-plugin" / "marketplace.json"
     ("Notion の ID の形", re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")),
     ("Notion の ID の形", re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")),
 )
-
-
-def 束(path: Path) -> list[str]:
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        w = line.split("#", 1)[0].strip()
-        if w and w not in out:
-            out.append(w)
-    return out
 
 
 def _files(base: Path):
@@ -144,16 +137,16 @@ def test_器の誤りを見つけられる(tmp_path):
 
 
 # ---- 2. 線 ----
-def 線の当たる所(base: Path, 語たち: dict[str, list[str]]) -> list[str]:
+def 線の当たる所(base: Path, 語の束: dict[str, list]) -> list[str]:
     hits = []
     for f in _files(base):
         name = f.relative_to(base).as_posix()
         text = _読む(f)
-        for 種類, words in 語たち.items():
-            for w in words:
-                if w in name:
+        for 種類, words in 語の束.items():
+            for w in 語たち(words):
+                if w.当たる(name):
                     hits.append(f"{name}: 名に{種類}「{w}」")
-                elif w in text:
+                elif w.当たる(text):
                     hits.append(f"{name}: 中に{種類}「{w}」")
         for 種類, pat in 在り処の形:
             m = pat.search(text)
