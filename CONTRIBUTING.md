@@ -6,6 +6,7 @@ payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sh
 ## 1. 枝と PR
 - 枝・1 枝 = 1 PR = 1 窓・PR の型は土台 §1 のとおり。PR の本文はこの repo の `.github/pull_request_template.md` の型で書く。
 - どちらのアカウントの窓も、この repo へ直に枝を push し PR を出す（fork しない）。
+- PR 本文の頭の `検証した base の先端:` に、検証（試験・他の PR とのぶつかり）を行った時の base の先端の commit を書く。base が進んだら検証し直して書き直す（CI の「検証の鮮度」〔`.github/workflows/verify-base.yml`〕が違いを PR のチェックの表示で知らせる・止めない）。
 
 ## 2. レビューと main へ入れる
 - レビューは書いた窓と別の窓がし、判定の形は土台の skill `review-pr`（`plugins/checker/skills/review-pr`）に従う。
@@ -29,11 +30,11 @@ payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sh
   3. 答え合わせの道具の試験（`tests/答え合わせ/`。照らしの道具そのものの試験で、芯から呼ばれないことも見る）
 - 作り物の会社の一揃い（社員・マスタ・勤怠の束を丸ごと）は repo に置かない。各試験は要る行だけを作り物で持つ。会社ごとの確かめは各事務所の Drive の側で行う。
 - **過去の正解に合わせる答え合わせは開発の道具に置き、芯に入れない**（`道具/` か `tests/`。`芯/` の計算は答えを見ない）。芯が標準の道具と芯の中の外を import しないことは `tests/test_芯の境.py` が見る。
-- 確認ページの検査（土台の qa-html の `check.mjs`）の試験は、環境に `QA_HTML_CHECK`（check.mjs の path）と node があれば当たる（手元で無ければ skip）。CI は ci.yml が土台の版の印で取って渡し、無ければ赤（`tests/確認ページ/test_確認ページの検査の道具.py`）。
+- 確認ページの型と検査（土台の qa-html の `check.mjs`）は repo に写さず直に読む（窓は入った plugin docs-kit・CI は `QA_HTML_CHECK`）。試験は node と一緒に在れば当たる（手元で無ければ skip）。CI は ci.yml が土台の main の先端から取って渡し、無ければ赤（`tests/確認ページ/test_確認ページの検査の道具.py`）。
 
 ## 5. 版
 - 版の出し方と印（タグ）は土台の決まりに従い、この repo の版の名と CHANGELOG の形は `docs/版の出し方.md` に書く。
-- 殻が渡す形・呼び口・型の版が変わる PR は、CHANGELOG の行の頭に `互換が切れる:` を書く（両側が latest を読むので、この印で気付く。見分け方は `docs/版の出し方.md`）。
+- 記録は PR ごとに `CHANGELOG.d/<YYYYMMDD>-<話題>.txt` を 1 つ足して書く（`CHANGELOG.md` へは足さない・書き方は `CHANGELOG.d/README.md`）。殻が渡す形・呼び口・型の版が変わる PR は、その行の頭に `互換が切れる:` を書く（両側が latest を読むので、この印で気付く。見分け方は `docs/版の出し方.md`）。
 
 ## 6. 設計の目次
 - `docs/設計/README.md` が設計書と部品の置き場の目次。file や dir を足したら、同じ PR で目次に行を足す（行の物が無いと骨の自己検査が赤になる）。

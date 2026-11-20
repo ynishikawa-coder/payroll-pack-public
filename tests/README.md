@@ -8,6 +8,7 @@
 - `test_芯の境.py`: 芯の約束＝`芯/` は標準の道具と芯の中しか import しない（入口・出口・初期設定・月次・道具・有給・確認ページ・管理表 など外を構文木で照らす。相対・`importlib` の字も）。
 - `test_土台の版.py`: 土台（agent-foundation-public）を読む版の印は `.github/workflows/土台の版.json` の 1 か所だけ（workflow に印を字で書かない）。
 - `test_検査の入口.py`・`test_Pythonの版の照らし.py`: 検査の入口（`scripts/check_all.sh`）と CI の版の Python で照らす段。
+- `test_検証した先端の照らし.py`: PR 本文の `検証した base の先端:` と今の base の先端の照らし（base が進んだ・PR の先端が base を含まない・欄が無い・崩れた本文を知らせる・止めない）と、それを呼ぶ workflow と PR の型の欄。
 - `test_公開版へ出す.py`・`test_給与エージェントの器.py`: 公開版へ出す道具と、給与エージェントの plugin の器。
 - `test_前の置き場の名の見張り.py`: 前の形の置き場の名（直し 30 の「前の置き場を止める」の 前）が repo の字に戻らない見張り（許す所は直しの記録・CHANGELOG の版の節・Drive の型.md §10 の表・前の名で止める試験）
 - `data/`: 骨の自己検査の束（`製品の名.txt`・`側の名.txt`）と外しの一覧（`外し.json`）。
@@ -22,5 +23,5 @@
 | `給与エージェント/` | `plugins/payroll-agent/` |
 | `作り物/` | 部品をまたぐ作り物の小さな例（国の率や表の例・直した所の外が変わらない回帰の見張り） |
 
-- 確認ページの検査（土台の qa-html の `check.mjs`）は、環境に `QA_HTML_CHECK`（check.mjs の path）と node があれば作った HTML に当てる（手元に無ければ skip）。CI は ci.yml が `土台の版.json` の版で取って渡し、無ければ `確認ページ/test_確認ページの検査の道具.py` が赤。
+- 確認ページの型と検査（土台の qa-html の `check.mjs`）は写さず直に読む: CI は環境の `QA_HTML_CHECK`、窓は入った plugin docs-kit（`確認ページ.py` の `qa_htmlの道具`）。node と一緒に在れば作った HTML に当てる（手元に無ければ skip）。CI は ci.yml が土台の main の先端から取って渡し、無ければ `確認ページ/test_確認ページの検査の道具.py` が赤。
 - 顧客の物（名・語・マスタ・台帳・実の勤怠）を置かない。過去の正解に合わせる答え合わせはここか `道具/` に置き、`芯/` に入れない。

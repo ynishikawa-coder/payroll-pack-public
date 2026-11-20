@@ -11,7 +11,7 @@
   1. 同じ問いの番号に答えがある → 答え済み
   2. 番号が違っても、この問いの行の 反映先・答えで変わる項目と人 か問いの字に出る 2_マスタ の設定の項目が、答え済みの問いの
      反映先と重なる（人の問いは 対象 の人も同じ）→ 答え済み
-  3. 問いの字の 2 字組の 8 割以上が答え済みの問いの字に在る（言い回しだけ変えた聞き直し）→ 答え済み
+  3. 問いの字の 2 字組の 8 割以上が答え済みの問いの字に在り、人の問いは対象の人も同じ（言い回しだけ変えた聞き直し）→ 答え済み
      （聞き直す時は、質問と回答のその問いの行の 理由 に「聞き直し: <前の問いの番号>・<訳>」と書く＝記録に残る形でだけ外せる）
   4. 答え済みでなく、上の 1〜3 の当たり方で決まり切らない前の答え（不明・確かめる など）に当たる → 詰め直し（何度目かを数え、
      出力の `詰め直し` に前の問いの番号と答えを添える）。同じ前の問いに当たる新しい問いが 2 つ以上あれば 2 つ目からは答え済みに
@@ -39,8 +39,10 @@ import json
 import os
 import re
 import sys
-import unicodedata
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # パックの根（check.mjs が file を直に呼ぶ）
+from 芯 import 字 as _字  # noqa: E402  字のそろえ方の正本（答え・番号・対象の字の揺れをそろえて比べる）
 
 形の名 = "qa-prior/1"
 タブ = "質問"
@@ -59,9 +61,9 @@ from pathlib import Path
 
 
 def 決まり切らない(回答) -> bool:
-    """答えの字が 分からない・不明・確かめる など決まり切らない答えか（答え済みに数えず、詰め直しの元にする）。"""
-    a = str(回答 or "").strip()
-    return a.startswith(決まり切らない頭)
+    """答えの字が 分からない・不明・確かめる など決まり切らない答えか（答え済みに数えず、詰め直しの元にする）。
+    頭だけでなく字の中を、字の揺れをそろえて見る（「まだ分からない」「今は不明」も決まり切らない＝聞き直しを止めない側）。"""
+    return _字.含む(回答, 決まり切らない頭, 大小も=False)
 
 
 def 鍵(no: str) -> str:
@@ -70,7 +72,7 @@ def 鍵(no: str) -> str:
 
 
 def _ならす(s: str) -> str:
-    s = unicodedata.normalize("NFKC", str(s))
+    s = _字.そろえる(s, 大小も=False)
     return re.sub(r"[\s、。・,.!?？！「」『』（）()【】:：/／\-ー〜~]", "", s)
 
 
@@ -129,7 +131,7 @@ def 答え済みの行(行たち: list[dict]) -> dict[str, dict]:
     out = {}
     for no, r in last.items():
         a = str(r.get("回答", "")).strip()
-        if a and not 決まり切らない(a) and not a.startswith(出し直し):   # 出し直し→ は別の問いへ移った印
+        if a and not 決まり切らない(a) and not _字.頭が(a, 出し直し):   # 出し直し→ は別の問いへ移った印
             out[no] = r
     return out
 
@@ -206,7 +208,7 @@ def _当たりたち(k: str, 字: str, mine: dict, 候補: dict[str, dict], 鍵�
     for no, r in 候補.items():
         if no in 外す or (k in 鍵から and 鍵から[k] == no):
             continue
-        人の問い = str(r.get("対象", "")).startswith("人") or str(mine.get("対象", "")).startswith("人")
+        人の問い = _字.頭が(r.get("対象", ""), "人") or _字.頭が(mine.get("対象", ""), "人")
         同じ人 = not 人の問い or (対象 and 対象 == _ならす(r.get("対象", "")))
         前の項目 = 設定の項目(r.get("反映先", "")) | 設定の項目(r.get("答えで変わる項目と人", ""))
         名指し = {i for i in 前の項目 if len(i) >= 4 and i in 字}
@@ -215,8 +217,16 @@ def _当たりたち(k: str, 字: str, mine: dict, 候補: dict[str, dict], 鍵�
             yield no, r, f"同じ設定の項目 {'・'.join(sorted(重なり))}"
             continue
         c = 含み(字, r.get("質問", ""))
-        if c >= 近さの線:
+        if c >= 近さの線 and (同じ人 or (not 対象 and _名指す(字, r.get("対象", "")))):
+            # 人の問いは対象の人も同じ時だけ（別の人の同じ言い回しの問いを答え済みにしない）。この問いの行がまだ無い
+            # （対象が分からない）時は、前の問いの対象の人の名が問いの字に在る時だけ
             yield no, r, f"字の重なり {c:.2f}"
+
+
+def _名指す(字: str, 対象) -> bool:
+    """前の問いの対象（`人 <名>`）の名が、問いの字に在るか（字の揺れと空白をそろえて見る）。名の無い対象は False。"""
+    名 = _ならす(re.sub(r"^\s*人", "", _字.そろえる(対象, 大小も=False, 空白も=False)))
+    return bool(名) and 名 in _ならす(字)
 
 
 def 照らす(問いたち: list[dict], 行たち: list[dict], 会社: str | None = None) -> dict:

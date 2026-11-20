@@ -9,6 +9,7 @@
 """
 import datetime
 import difflib
+import importlib.util
 import json
 import os
 import re
@@ -16,6 +17,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
+from 名の字 import 束, 語, 語たち  # 束の読みと字の揺れのそろえは 1 か所（tests/名の字.py）
 
 根 = Path(__file__).resolve().parent.parent
 目次 = 根 / "docs" / "設計" / "README.md"
@@ -96,7 +99,7 @@ def 載っている所(base: Path, words: list[str]) -> list[str]:
             continue
         name = str(f.relative_to(base))
         for w in words:
-            if w in text or w in name:
+            if 語(w).当たる(text) or 語(w).当たる(name):  # 字の揺れをそろえて当てる（tests/名の字.py）
                 # 語そのものは出さない（出力に顧客の語を書かない）
                 hits.append(f"{name}: 顧客の語の束の {words.index(w) + 1} 番目")
     return hits
@@ -113,10 +116,20 @@ def test_顧客の語を見つけられる(tmp_path):
     (tmp_path / "a.md").write_text("作り物の値だけ", encoding="utf-8")
     (tmp_path / "b.md").write_text("ここに禁じ語あり", encoding="utf-8")
     assert 載っている所(tmp_path, ["禁じ語"]) == ["b.md: 顧客の語の束の 1 番目"]
+    (tmp_path / "b.md").write_text("ここに禁じ\u200b語あり", encoding="utf-8")  # 壊す: 幅の無い字を挟む
+    assert 載っている所(tmp_path, ["禁じ語"]) == ["b.md: 顧客の語の束の 1 番目"]
 
 
 # ---- 3. 版の約束（docs/版の出し方.md の CHANGELOG）----
 CHANGELOG = 根 / "CHANGELOG.md"
+_spec = importlib.util.spec_from_file_location("changelog", 根 / "scripts" / "changelog.py")
+記録 = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(記録)
+
+
+def 未リリースを含む記録(根_: Path = 根) -> str:
+    """CHANGELOG.md の「未リリース」の決まった 1 行を、記録の断片（CHANGELOG.d/）の行に置き替えた文（印の照らしの元）。"""
+    return 記録.with_unreleased((根_ / "CHANGELOG.md").read_text(encoding="utf-8"), 記録.gathered_lines(根_))
 印 = "互換が切れる:"
 印の無い最後の型の版 = 5  # v0.1.3 までの節は書き替えない（出した版の記録）。6 からは型の版の行に印が要る
 
@@ -148,7 +161,7 @@ def 印の誤り(text: str, 型の版: int) -> list[str]:
 
 def test_互換が切れるの印の形と型の版():
     型の版 = json.loads((根 / "初期設定" / "型.json").read_text(encoding="utf-8"))["版"]
-    assert 印の誤り(CHANGELOG.read_text(encoding="utf-8"), 型の版) == []
+    assert 印の誤り(未リリースを含む記録(), 型の版) == []
 
 
 def test_印の誤りを見つけられる():
@@ -162,8 +175,9 @@ def test_印の誤りを見つけられる():
 
 
 def 呼び口を変えたのに_changelog_が無い(変えた: list[str]) -> list[str]:
-    """main からの枝で変えた path → CHANGELOG を変えていなければ、変えた呼び口の path（tests/ の外の .py・.json・.html）。"""
-    if "CHANGELOG.md" in 変えた:
+    """main からの枝で変えた path → 記録（自分の断片 CHANGELOG.d/<日付>-<話題>.txt・版を出す PR は CHANGELOG.md の版の節）を
+    変えていなければ、変えた呼び口の path（tests/ の外の .py・.json・.html）。"""
+    if "CHANGELOG.md" in 変えた or any(p.startswith("CHANGELOG.d/") and p.endswith(".txt") for p in 変えた):
         return []
     return [p for p in 変えた if 呼び口の形.search(p) and not p.startswith(("tests/", ".github/", ".claude/"))]
 
@@ -197,6 +211,140 @@ def test_呼び口を変えた枝は_changelog_に行を足す():
 def test_呼び口を変えたのに_changelog_が無いを見つけられる():
     assert 呼び口を変えたのに_changelog_が無い(["有給/有給.py", "tests/有給/test_x.py", "docs/a.md"]) == ["有給/有給.py"]
     assert 呼び口を変えたのに_changelog_が無い(["有給/有給.py", "CHANGELOG.md"]) == []
+    assert 呼び口を変えたのに_changelog_が無い(["有給/有給.py", "CHANGELOG.d/20990101-x.txt"]) == []
+    assert 呼び口を変えたのに_changelog_が無い(["有給/有給.py", "CHANGELOG.d/README.md"]) == ["有給/有給.py"]
+
+
+# 記録の断片（CHANGELOG.d/README.md・scripts/changelog.py）: 全部の PR が「未リリース」の同じ所へ足す形にしない。
+def test_記録の断片の形():
+    assert 記録.check(根) == []
+
+
+def _記録の置き場(tmp_path: Path, 未リリース: str = None) -> Path:
+    (tmp_path / "CHANGELOG.d").mkdir(parents=True)
+    (tmp_path / "CHANGELOG.d" / "README.md").write_text("書き方", encoding="utf-8")
+    本文 = 記録.UNRELEASED_TEXT if 未リリース is None else 未リリース
+    (tmp_path / "CHANGELOG.md").write_text(
+        f"# CHANGELOG\n\n## 未リリース\n{本文}\n\n## [v0.2.0] - 2099-01-02\n- 乙\n\n## [v0.1.0] - 2099-01-01\n- 甲\n",
+        encoding="utf-8")
+    return tmp_path
+
+
+def test_記録の断片の誤りを見つけられる(tmp_path):
+    d = _記録の置き場(tmp_path)
+    assert 記録.check(d) == []  # 緑（断片が無い）
+    (d / "CHANGELOG.d" / "20990103-sakumono.txt").write_text("- 足した\n- 互換が切れる: 型の版 9\n", encoding="utf-8")
+    assert 記録.check(d) == []  # 緑
+    (d / "CHANGELOG.md").write_text((d / "CHANGELOG.md").read_text(encoding="utf-8").replace(
+        記録.UNRELEASED_TEXT, 記録.UNRELEASED_TEXT + "\n- 古い形で足した行"), encoding="utf-8")  # 壊す: 未リリースへ直に足す
+    assert len(記録.check(d)) == 1
+    _記録の置き場(tmp_path / "b")
+    d = tmp_path / "b"
+    (d / "CHANGELOG.d" / "sakumono.txt").write_text("- x\n", encoding="utf-8")  # 壊す: 名に日付が無い
+    (d / "CHANGELOG.d" / "20990103-y.txt").write_text("- x\n  続きの行\n", encoding="utf-8")  # 壊す: 1 項が 2 行
+    (d / "CHANGELOG.d" / "20990103-z.txt").write_text("\n", encoding="utf-8")  # 壊す: 中身が無い
+    assert len(記録.check(d)) == 3
+    # 断片の行も「互換が切れる」の印の照らしに入る（型の版の上げの印が断片に無ければ赤）
+    d = _記録の置き場(tmp_path / "c")
+    (d / "CHANGELOG.d" / "20990103-k.txt").write_text("- 型の版 9: 列を足した\n", encoding="utf-8")  # 壊す: 印が無い
+    assert 印の誤り(未リリースを含む記録(d), 9) != []
+    (d / "CHANGELOG.d" / "20990103-k.txt").write_text("- 互換が切れる: 型の版 9: 列を足した\n", encoding="utf-8")
+    assert 印の誤り(未リリースを含む記録(d), 9) == []
+
+
+def test_版を出すと断片が版の節になり断片は消える(tmp_path):
+    d = _記録の置き場(tmp_path)
+    (d / "CHANGELOG.d" / "20990103-a.txt").write_text("- 甲の直し\n", encoding="utf-8")
+    (d / "CHANGELOG.d" / "20990104-b.txt").write_text("- 乙の直し\n- 丙の直し\n", encoding="utf-8")
+    assert 記録.release("v0.3.0", "2099-01-04", d) == "## [v0.3.0] - 2099-01-04"
+    text = (d / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert 版の見出しの誤り(text) == [] and 記録.check(d) == []
+    節 = 版の節(text)["[v0.3.0] - 2099-01-04"]
+    assert sorted(節) == ["- 丙の直し", "- 乙の直し", "- 甲の直し"] and 節.index("- 乙の直し") < 節.index("- 丙の直し")
+    assert [p.name for p in (d / "CHANGELOG.d").iterdir()] == ["README.md"]
+    with pytest.raises(SystemExit):
+        記録.release("v0.4.0", "2099-01-05", d)  # 断片が無ければ版を作らない
+
+
+def _g(d: Path, *a: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(d), "-c", "user.name=t", "-c", "user.email=t@users.noreply.github.com",
+                           "-c", "core.quotepath=off", *a], capture_output=True, text=True)
+
+
+def test_古い形の行を断片へ移す_取り込みでぶつかった途中でも(tmp_path):
+    # この形の前に枝を切った PR が main を取り込む時（CHANGELOG.d/README.md の手順どおり）。ぶつかった途中の CHANGELOG.md には
+    # 自分の行が印の内側に残るので、そこを「すでに在る行」と読むと 0 行しか移らず、行が黙って消える（#280 のレビュー）
+    d = tmp_path / "r"
+    d.mkdir()
+    _g(d, "init", "-q", "-b", "main")
+    古い頭 = "# C\n\n## 未リリース\n- 甲（main の前の行）\n\n## [v0.1.0] - 2099-01-01\n- 初め\n"
+    (d / "CHANGELOG.md").write_text(古い頭, encoding="utf-8")
+    _g(d, "add", "-A"); _g(d, "commit", "-qm", "古い形")
+    _g(d, "checkout", "-qb", "claude/20990102-mine")
+    (d / "CHANGELOG.md").write_text(古い頭.replace("- 甲（main の前の行）\n", "- 甲（main の前の行）\n- 乙（自分の行）\n"), encoding="utf-8")
+    _g(d, "commit", "-qam", "自分の行")
+    _g(d, "checkout", "-q", "main")
+    (d / "CHANGELOG.d").mkdir()
+    (d / "CHANGELOG.d" / "README.md").write_text("書き方", encoding="utf-8")
+    (d / "CHANGELOG.d" / "20990101-sono.txt").write_text("- 甲（main の前の行）\n", encoding="utf-8")
+    (d / "CHANGELOG.md").write_text(
+        f"# C\n\n## 未リリース\n{記録.UNRELEASED_TEXT}\n\n## [v0.1.0] - 2099-01-01\n- 初め\n", encoding="utf-8")
+    _g(d, "add", "CHANGELOG.md", "CHANGELOG.d"); _g(d, "commit", "-qm", "断片の形")
+    _g(d, "checkout", "-q", "claude/20990102-mine")
+    assert _g(d, "merge", "-q", "main").returncode != 0  # ぶつかる
+    assert "<<<<<<<" in (d / "CHANGELOG.md").read_text(encoding="utf-8")
+    先 = d / "CHANGELOG.d" / "20990102-mine.txt"
+    自分の = _g(d, "show", "HEAD:CHANGELOG.md").stdout
+    assert 記録.adopt(自分の, 先, d, base="main") == ["- 乙（自分の行）"]  # main に在る 甲 は移さない・自分の 乙 は移す
+    _g(d, "checkout", "main", "--", "CHANGELOG.md")
+    assert 記録.check(d) == [] and 先.read_text(encoding="utf-8") == "- 乙（自分の行）\n"
+    # 取り込む先が読めない時・断片にぶつかった印が残る時は止める（黙って 0 行で進まない）
+    with pytest.raises(SystemExit):
+        記録.adopt(自分の, d / "CHANGELOG.d" / "20990102-b.txt", d, base="無い枝")
+    先.write_text("<<<<<<< HEAD\n- x\n=======\n- y\n>>>>>>> main\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        記録.adopt(自分の, d / "CHANGELOG.d" / "20990102-b.txt", d, base="main")
+
+
+_AI_の枝 = re.compile(r"^claude/(\d{8}-.+)$")
+
+
+def 枝の名と違う断片(枝: str, 足した: list[str]) -> list[str]:
+    """AI の窓の枝 claude/<YYYYMMDD>-<話題> で足した断片が <YYYYMMDD>-<話題>.txt でなければ、その path（人の枝は見ない）。"""
+    m = _AI_の枝.match(枝 or "")
+    if not m:
+        return []
+    return [p for p in 足した if p.startswith("CHANGELOG.d/") and p.endswith(".txt") and p != f"CHANGELOG.d/{m.group(1)}.txt"]
+
+
+def _足した断片() -> list[str] | None:
+    def git(*a):
+        return subprocess.run(["git", "-C", str(根), "-c", "core.quotepath=off", *a], capture_output=True, text=True, check=True).stdout
+    for ref in ("origin/main", "main"):
+        try:
+            基 = git("merge-base", "HEAD", ref).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+        # main から足した断片（commit 済み・索引）と、まだ git に足していない断片（手元で書いた直後も CI と同じに見る）
+        足した = git("diff", "--name-only", "--diff-filter=A", 基, "--", "CHANGELOG.d").splitlines()
+        足した += git("ls-files", "--others", "--exclude-standard", "--", "CHANGELOG.d").splitlines()
+        return sorted({l for l in 足した if l})
+    return None
+
+
+def test_枝で足す断片は枝の名と同じ():
+    足した = _足した断片()
+    if 足した is None:
+        _手元に無い("main が手元に無い")
+    枝 = os.environ.get("GITHUB_HEAD_REF") or subprocess.run(
+        ["git", "-C", str(根), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert 枝の名と違う断片(枝, 足した) == []
+
+
+def test_枝の名と違う断片を見つけられる():
+    assert 枝の名と違う断片("claude/20990101-sakumono", ["CHANGELOG.d/20990101-sakumono.txt"]) == []
+    assert 枝の名と違う断片("claude/20990101-sakumono", ["CHANGELOG.d/20990101-hoka.txt"]) == ["CHANGELOG.d/20990101-hoka.txt"]
+    assert 枝の名と違う断片("人の枝", ["CHANGELOG.d/20990101-hoka.txt"]) == []
     assert 呼び口を変えたのに_changelog_が無い(["tests/有給/test_x.py", "docs/a.md"]) == []
 
 
@@ -477,15 +625,6 @@ def test_出した直しの書き替えを見つけられる(tmp_path):
 当たるの印 = "全ての事務所"
 
 
-def 束(path: Path) -> list[str]:
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        w = line.split("#", 1)[0].strip()
-        if w and w not in out:
-            out.append(w)
-    return out
-
-
 def 外しの一覧(path: Path = データ / "外し.json") -> dict[str, dict[str, dict]]:
     d = json.loads(path.read_text(encoding="utf-8"))
     return {k: {e["path"]: e for e in v} for k, v in d.items() if isinstance(v, list)}
@@ -499,7 +638,7 @@ def _files(base: Path):
         yield f, rel.as_posix()
 
 
-def 製品の名の当たる所(base: Path, words: list[str]) -> dict[str, list[str]]:
+def 製品の名の当たる所(base: Path, words: list) -> dict[str, list[str]]:
     hits: dict[str, list[str]] = {}
     for f, name in _files(base):
         if name.startswith(束を見ない):
@@ -512,22 +651,22 @@ def 製品の名の当たる所(base: Path, words: list[str]) -> dict[str, list[
                 text = ""
             if f.suffix in (".md", ".html"):
                 text = 例の節.sub("", text)
-        for w in words:
-            if w in name:
+        for w in 語たち(words):
+            if w.当たる(name):
                 hits.setdefault(name, []).append(f"名に製品の名「{w}」")
-            elif w in text:
+            elif w.当たる(text):
                 hits.setdefault(name, []).append(f"中に製品の名「{w}」")
     return hits
 
 
-def 側の名の当たる所(base: Path, words: list[str]) -> dict[str, list[str]]:
+def 側の名の当たる所(base: Path, words: list) -> dict[str, list[str]]:
     hits: dict[str, list[str]] = {}
     for f, name in _files(base):
         if name.startswith(束を見ない) or f.suffix not in (".py", ".json"):
             continue
         text = f.read_text(encoding="utf-8")
-        for w in words:
-            if w in text:
+        for w in 語たち(words):
+            if w.当たる(text):
                 hits.setdefault(name, []).append(f"中に事務所・側の名「{w}」")
     return hits
 
@@ -625,6 +764,35 @@ def test_側の名を見つけられる(tmp_path):
     assert 線の赤(側の名の当たる所(tmp_path, words), {}) == []  # 緑
     assert 線の赤({}, {"a.json": {"なぜ": "", "畳む": "便 2"}}) == [
         "外し a.json: なぜ と 畳む が要る", "外し a.json: もう当たらない（外し.json からこの行を消す）"]
+
+
+def test_字の揺れた名も見つけられる(tmp_path):
+    # 字のそのままの一致だと、全角・大小・幅の無い字を挟んだ名が束に当たらず通る（台帳 2026-11-20・#271 のレビュー）
+    words = ["Sakumono", "作り物の側"]
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert 線の赤(側の名の当たる所(tmp_path, words), {}) == []  # 緑
+    for 揺れ in ("Ｓａｋｕｍｏｎｏ", "SAKUMONO", "Saku\u200bmono", "Saku\u2060mo\ufeffno", "作り物の\u200d側"):
+        (tmp_path / "a.py").write_text(f"x = '{揺れ}'\n", encoding="utf-8")  # 壊す: 揺れた字で名を書く
+        assert len(線の赤(側の名の当たる所(tmp_path, words), {})) == 1, repr(揺れ)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")  # 戻す
+    assert 線の赤(側の名の当たる所(tmp_path, words), {}) == []
+    # 製品の名は file・dir の名の揺れも拾う。〔大小を分ける〕の語だけは大小を分ける（地の英語と同じ綴りの名）
+    (tmp_path / "ＳＡＫＵＭＯＮＯ").mkdir()
+    (tmp_path / "ＳＡＫＵＭＯＮＯ" / "b.md").write_text("kumo と sakumono", encoding="utf-8")
+    赤 = 線の赤(製品の名の当たる所(tmp_path, ["Sakumono", "Kumo〔大小を分ける〕"]), {})
+    assert 赤 == ["ＳＡＫＵＭＯＮＯ/b.md: 名に製品の名「Sakumono」"]
+    (tmp_path / "ＳＡＫＵＭＯＮＯ" / "b.md").write_text("Ｋｕ\u200bｍｏ", encoding="utf-8")  # 大小を分ける語も全角・幅の無い字は拾う
+    assert "ＳＡＫＵＭＯＮＯ/b.md: 中に製品の名「Kumo」" in 線の赤(製品の名の当たる所(tmp_path, ["Kumo〔大小を分ける〕"]), {})
+
+
+def test_本物の束は字の揺れをそろえて読む():
+    # 本物の束の全部の語が、揺れた字（全角・大文字・幅の無い字を挟む）でも当たる（束の読みと当て方が 1 か所を通る）
+    for f in ("製品の名.txt", "側の名.txt", "環境の名.txt"):
+        for w in 束(データ / f):
+            揺れ = "\u200b".join(w.字)
+            assert w.当たる(揺れ), (f, str(w))
+            if not w.大小を分ける:
+                assert w.当たる(w.字.upper()) and w.当たる(w.字.lower()), (f, str(w))
 
 
 def test_直しの印を見つけられる(tmp_path):

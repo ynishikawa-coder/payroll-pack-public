@@ -7,19 +7,16 @@ import re
 
 from 手伝い import PLUGIN, 根
 
+from tests.名の字 import 束, 語たち  # 束の読みと字の揺れのそろえは 1 か所（根は 手伝い が sys.path に足す）
+
 見る所 = ("bin", "hooks")
 殻の名 = ("pixel-office", "agents/kyuyo", "kyuyo", "fleet.yaml", "drive_upload")
 _長い字 = re.compile(r"[A-Za-z0-9_-]{25,}")
 _十六進 = re.compile(r"\b[0-9a-f]{32}\b")
 
 
-def _束(name: str) -> list[str]:
-    out = []
-    for line in (根 / "tests" / "data" / name).read_text(encoding="utf-8").splitlines():
-        w = line.split("#", 1)[0].strip()
-        if w:
-            out.append(w)
-    return out
+def _束(name: str) -> list:
+    return 束(根 / "tests" / "data" / name)
 
 
 def ID_らしい(字: str) -> list[str]:
@@ -29,7 +26,7 @@ def ID_らしい(字: str) -> list[str]:
 
 
 def 外れ(根の_dir) -> list[str]:
-    語 = list(殻の名) + _束("製品の名.txt") + _束("側の名.txt")
+    語 = 語たち(殻の名) + _束("製品の名.txt") + _束("側の名.txt")
     out = []
     for d in 見る所:
         for f in sorted((根の_dir / d).rglob("*")):
@@ -37,7 +34,7 @@ def 外れ(根の_dir) -> list[str]:
                 continue
             rel = f.relative_to(根の_dir).as_posix()
             t = f.read_text(encoding="utf-8")
-            out += [f"{rel}: 語「{w}」" for w in 語 if w in t or w in f.name]
+            out += [f"{rel}: 語「{w}」" for w in 語 if w.当たる(t) or w.当たる(f.name)]
             out += [f"{rel}: ID らしい字「{x}」" for x in ID_らしい(t)]
     return out
 

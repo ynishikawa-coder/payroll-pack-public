@@ -9,13 +9,12 @@ from __future__ import annotations
 import calendar
 from datetime import date, timedelta
 
-from 芯 import 支給月の字
+from 芯 import 設定, 支給月の字
 
 from . import 引く口 as 口
 
 曜日 = "月火水木金土日"
 既定の暦 = {"休みの曜日": ["土", "日"], "祝日": "休み", "会社の休み": []}
-_月のずれ = {"当月": 0, "翌月": 1, "翌々月": 2}
 
 
 def 月を足す(年: int, 月: int, n: int) -> tuple[int, int]:
@@ -42,9 +41,10 @@ def 支給月を読む(支給月: str) -> tuple[int, int]:
 
 
 def 期間(支給月: str, 締め日, 支給の月) -> tuple[date, date]:
-    if 支給の月 not in _月のずれ:
-        raise ValueError(f"支払.支給の月「{支給の月}」は 当月・翌月・翌々月 の外")
-    y, m = 月を足す(*支給月を読む(支給月), -_月のずれ[支給の月])
+    ずれ = 設定.支給の月のずれ()   # 正本は 芯/設定の表.json の 月のずれ（ここに写さない）
+    if 支給の月 not in ずれ:
+        raise ValueError(f"支払.支給の月「{支給の月}」は {'・'.join(ずれ)} の外")
+    y, m = 月を足す(*支給月を読む(支給月), -ずれ[支給の月])
     終わり = 日にする(y, m, 締め日)
     py, pm = 月を足す(y, m, -1)
     始め = 日にする(py, pm, 締め日) + timedelta(days=1)

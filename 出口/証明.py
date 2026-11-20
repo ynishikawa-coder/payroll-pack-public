@@ -188,8 +188,9 @@ def 入力の指紋(入力: dict, *, 会社: str, 支給月: str, 回: str) -> d
 
 
 def パックの版() -> str:
-    """CHANGELOG の一番上の版の節（`## [vX.Y.Z]`）。「未リリース」に行があれば `+未リリース` を付ける
-    （版の印の中身でない＝殻の名簿の版と合わない＝出せない）。読めなければ空（照らす は通さない）。"""
+    """CHANGELOG の一番上の版の節（`## [vX.Y.Z]`）。未リリースの記録の断片（`CHANGELOG.d/` の README の外の file）か
+    「未リリース」の行があれば `+未リリース` を付ける（版の印の中身でない＝殻の名簿の版と合わない＝出せない。版を出す PR が
+    断片を版の節にして消す＝CHANGELOG.d/README.md）。読めなければ空（照らす は通さない）。"""
     try:
         t = (_根 / "CHANGELOG.md").read_text(encoding="utf-8")
     except OSError:
@@ -199,7 +200,10 @@ def パックの版() -> str:
         return ""
     頭 = t[: m.start()]
     未 = re.search(r"^## 未リリース\s*$(.*)", 頭, re.M | re.S)
-    return m.group(1) + ("+未リリース" if 未 and re.search(r"^\s*-\s+\S", 未.group(1), re.M) else "")
+    断片 = _根 / "CHANGELOG.d"
+    断片がある = 断片.is_dir() and any(f.name != "README.md" for f in 断片.iterdir())
+    行がある = bool(未 and re.search(r"^\s*-\s+\S", 未.group(1), re.M))
+    return m.group(1) + ("+未リリース" if 断片がある or 行がある else "")
 
 
 def _物の値(出す物, 名: str):

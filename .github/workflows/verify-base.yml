@@ -1,0 +1,75 @@
+name: 検証の鮮度
+
+# PR 本文の `検証した base の先端:` の commit が今の base の先端と同じで、PR の先端がそれを実際に含むか（compare）を照らし、PR のチェックの表示（check run）で知らせる。
+# 止めない（違っても欄が無くても conclusion は neutral＝合流を止めない）。照らしの正本は scripts/検証した先端の照らし.py。
+# PR の本文を直した・枝を押した時はその PR を、どれかの枝が進んだ時はその枝を base にする開いた PR の全部を照らし直す
+# （main が進んだ後に本文の検証が古いままになるのを知らせる）。本文は shell の字へ差し込まず file で渡す。
+# pull_request_target: workflow と照らしの道具は base（既定の枝）の物で動く＝PR が照らしを書き換えて自分を success にできない。
+# PR の中身は checkout も実行もしない（本文と先端は API で読むだけ）ので、base の権限で PR の code が動く事は無い。
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    steps:
+      # いつも既定の枝（main）の照らしで見る（PR の枝の照らしは使わない・押した枝が古くて照らしを持たなくても照らす）。
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 本文の検証した base の先端を今の base の先端と照らす
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PUSHED: ${{ github.ref_name }}
+        run: |
+          # PR ごとに照らす。1 つの PR で gh が落ちても job を落とさず、その PR は neutral「照らせない」にして残りを続ける（止めない）。
+          set -uo pipefail
+          tool=scripts/検証した先端の照らし.py
+          if [ ! -f "$tool" ]; then
+            echo "照らしの道具がまだ無い（$tool）＝照らさない" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          post() {  # $1=PR の先端 $2=out.json
+            c=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["conclusion"])' "$2")
+            t=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$2")
+            s=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["summary"])' "$2")
+            gh api -X POST "repos/$R/check-runs" -f name="検証の鮮度（本文の base の先端）" -f head_sha="$1" \
+              -f status=completed -f conclusion="$c" -f "output[title]=$t" -f "output[summary]=$s" > /dev/null || return 1
+            echo "- #$n: $c — $t" >> "$GITHUB_STEP_SUMMARY"
+          }
+          look_one() {
+            n="$1"; out="$RUNNER_TEMP/out.json"
+            pr=$(gh api "repos/$R/pulls/$n") || return 1
+            head=$(printf '%s' "$pr" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])') || return 1
+            base=$(printf '%s' "$pr" | python3 -c 'import json,sys; print(json.load(sys.stdin)["base"]["ref"])') || return 1
+            printf '%s' "$pr" | python3 -c 'import json,sys; print(json.load(sys.stdin)["body"] or "")' > "$RUNNER_TEMP/body.txt" || return 1
+            tip=$(gh api "repos/$R/branches/$base" -q .commit.sha) || tip=""
+            # compare（base の先端...PR の先端）の status を生のまま照らしへ渡す（含むかの決め方の正本は照らしの道具。ここで決めない）
+            status=""
+            [ -n "$tip" ] && status=$(gh api "repos/$R/compare/$tip...$head" -q .status 2>/dev/null || true)
+            python3 "$tool" --本文 "$RUNNER_TEMP/body.txt" --先端 "$tip" --base "$base" --compare "$status" > "$out" || return 1
+            post "$head" "$out"
+          }
+          if [ "$EVENT" = pull_request_target ]; then
+            nums="$PR_NUMBER"
+          else
+            nums=$(gh pr list --repo "$R" --state open --base "$PUSHED" --limit 200 --json number -q '.[].number') || nums=""
+          fi
+          for n in $nums; do
+            look_one "$n" || echo "- #$n: 照らせない（GitHub の読み書きが落ちた。PR の check を回し直すと照らし直す）" >> "$GITHUB_STEP_SUMMARY"
+          done

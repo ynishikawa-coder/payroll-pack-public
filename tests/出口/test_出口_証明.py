@@ -196,7 +196,7 @@ def test_有給休暇管理表は証明つきの出す物で_証明が無いと�
     r = 証明.照らす(d, {**p, "回": "賞与"}, 入力=_元(o))
     assert not r["通す"] and any("合わない" in x for x in r["赤"])
     # 締まらない人が居る月は有給休暇管理表も出さない（証明も付けない）
-    締め = [list(月次.勤怠の照らし.締めの列), *[[C, 支給月, NO, "", "まだ" if NO == "0002" else "締まった", "", ""] for NO in 人たち]]
+    締め = [list(月次.勤怠の照らし.締めの列), *[[C, 支給月, NO, "", "まだ" if NO == "0002" else "締まった", "", "", 証明.パックの版()] for NO in 人たち]]
     o = _回す(tmp_path / "b", 作._例(), 有給の値={}, 締めの記録=締め)
     assert "有給休暇管理表" not in o and o["有給の出す行"] == [] and o["証明"] == {}
 
@@ -217,6 +217,13 @@ def test_パックの版はCHANGELOGの一番上の版と未リリースの印(t
         (tmp_path / "CHANGELOG.md").write_text(中身, encoding="utf-8")
         monkeypatch.setattr(証明, "_根", tmp_path)
         assert 証明.パックの版() == 期待
+    # 記録の断片（CHANGELOG.d/）が在れば版の印の中身でない（版を出す PR が断片を版の節にして消す）
+    (tmp_path / "CHANGELOG.md").write_text("# C\n\n## 未リリース\n決まった 1 行\n\n## [v1.2.3] - 2099-01-01\n- a\n", encoding="utf-8")
+    (tmp_path / "CHANGELOG.d").mkdir()
+    (tmp_path / "CHANGELOG.d" / "README.md").write_text("書き方", encoding="utf-8")
+    assert 証明.パックの版() == "v1.2.3"  # README だけなら版の印の中身
+    (tmp_path / "CHANGELOG.d" / "20990101-x.txt").write_text("- 足した\n", encoding="utf-8")  # 壊す: 断片が在る
+    assert 証明.パックの版() == "v1.2.3+未リリース"
 
 
 def test_マスタのタブは型の正本の2_マスタ():
