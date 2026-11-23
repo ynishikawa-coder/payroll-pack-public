@@ -59,7 +59,7 @@ def 読む(表, 会社名: str, 支給月: str) -> dict:
     誤り: list[str] = []
     行たち = []
     for i, r in enumerate(形.行たち(xs), 2):
-        r = {k: 形._字(v).strip() for k, v in r.items()}
+        r = {k: 形.値の字(v).strip() for k, v in r.items()}
         if r.get("会社") != 会社名:
             continue
         if not _支給月.fullmatch(r.get("支給月", "")):

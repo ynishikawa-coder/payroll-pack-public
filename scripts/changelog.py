@@ -13,6 +13,9 @@ CHANGELOG.d/<YYYYMMDD>-<話題>.txt を 1 つ足し（枝の名と同じ＝2 本
   python3 scripts/changelog.py adopt <古い形の CHANGELOG.md|-> <断片の file> [<取り込む先・既定 origin/main>]
       # 古い形で「未リリース」に足した自分の行を断片へ移す（この形の前に枝を切った PR が main を取り込む時）。
       # すでに在る行は取り込む先の版から読む（作業中のぶつかった CHANGELOG.md からは読まない）
+
+終わりの値: 0 緑・済んだ／1 赤・止めた（形が赤・出す物が無い・節が既に在る・ぶつかった印が残る）／
+2 道具が働けない（使い方の誤り・取り込む先が読めない・道具そのものが壊れた）。2 は結果ではない（1 と混ぜない）。
 """
 from __future__ import annotations
 
@@ -96,6 +99,12 @@ def gathered_lines(root: Path = ROOT, ref: str = "HEAD") -> list[str]:
     return out
 
 
+def _働けない(訳: str) -> None:
+    """使い方の誤り・読めない元＝道具が働けない。終わりの値 2（1 の「赤・止めた」と混ぜない）で抜ける。"""
+    print(f"✗ {訳}", file=sys.stderr)
+    raise SystemExit(2)
+
+
 def with_unreleased(text: str, lines: list[str]) -> str:
     """CHANGELOG.md の文の「未リリース」の決まった 1 行を、断片の行に置き替えた文（照らし・版の節を作る元）。"""
     return text.replace(f"{UNRELEASED_HEAD}\n{UNRELEASED_TEXT}\n", f"{UNRELEASED_HEAD}\n" + "".join(l + "\n" for l in lines), 1)
@@ -104,7 +113,7 @@ def with_unreleased(text: str, lines: list[str]) -> str:
 def release(version: str, date: str, root: Path = ROOT) -> str:
     """断片を束ねて版の節を「未リリース」の下に作り、断片を消す。作った節の見出しを返す。"""
     if not re.fullmatch(r"v\d+\.\d+\.\d+", version) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        raise SystemExit("版は vX.Y.Z・日は YYYY-MM-DD")
+        _働けない("版は vX.Y.Z・日は YYYY-MM-DD")
     errs = check(root)
     if errs:
         raise SystemExit("形が赤のまま版を作らない:\n" + "\n".join(errs))
@@ -134,8 +143,8 @@ def adopt(source_text: str, target: Path, root: Path = ROOT, base: str = "origin
     body = unreleased_body(source_text) or ""
     r = _git(root, "show", f"{base}:CHANGELOG.md")
     if r.returncode != 0:
-        raise SystemExit(f"取り込む先 {base} の CHANGELOG.md を読めない（git fetch origin main をしてから回す・別の先は 3 つ目の引数）: "
-                         f"{r.stderr.strip()[:200]}")
+        _働けない(f"取り込む先 {base} の CHANGELOG.md を読めない（git fetch origin main をしてから回す・別の先は 3 つ目の引数）: "
+                f"{r.stderr.strip()[:200]}")
     have = set(r.stdout.splitlines())
     names = _git(root, "ls-tree", "--name-only", f"{base}:{DIR_NAME}")
     for name in names.stdout.splitlines() if names.returncode == 0 else []:
@@ -183,4 +192,10 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except Exception as e:  # 道具そのものが壊れた＝終わりの値 2（1 の「見つかった・赤」と混ぜない）
+        import traceback
+        traceback.print_exc()
+        print(f"✗ 道具が壊れた（版の記録の道具 changelog.py・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)

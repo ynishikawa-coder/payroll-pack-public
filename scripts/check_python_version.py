@@ -9,7 +9,7 @@ CI と同じ版の python そのもので compile する（版の決まりを写
 - その版の python を探す順: 今の python → PATH の `python<版>` → `uv python find <版>`。無ければ赤（入れ方を出す）。
 - 照らす file: 引数で渡せばそれだけ。渡さなければ git の file（追跡中＋まだ足していない・.gitignore の外）の .py 全部。
 - 通れば 1 行目に `PYTHON=<その版の python の path>` を出す（入口が試験を同じ python で回せるかを見る）。
-- 終了の値: 0 通り／1 読めない file が在る／2 版か python が決まらない。
+- 終了の値: 0 通り／1 読めない file が在る／2 照らしが働けない（版か python が決まらない・道具が壊れた）。
 """
 import re
 import shutil
@@ -24,18 +24,22 @@ CIの定義 = 根 / ".github" / "workflows" / "ci.yml"
 _子 = r"""
 import sys
 悪い = 0
-for p in sys.stdin.buffer.read().decode("utf-8").split("\0"):
-    if not p:
-        continue
-    try:
-        with open(p, "rb") as f:
-            compile(f.read(), p, "exec", dont_inherit=True)
-    except SyntaxError as e:
-        悪い += 1
-        print(f"読めない: {p}:{e.lineno}: {e.msg}")
-    except (OSError, ValueError) as e:
-        悪い += 1
-        print(f"読めない: {p}: {e}")
+try:
+    for p in sys.stdin.buffer.read().decode("utf-8").split("\0"):
+        if not p:
+            continue
+        try:
+            with open(p, "rb") as f:
+                compile(f.read(), p, "exec", dont_inherit=True)
+        except SyntaxError as e:
+            悪い += 1
+            print(f"読めない: {p}:{e.lineno}: {e.msg}")
+        except (OSError, ValueError) as e:
+            悪い += 1
+            print(f"読めない: {p}: {e}")
+except Exception as e:  # 子そのものが壊れた＝2（1 の「読めない file が在る」と混ぜない）
+    print(f"子が壊れた: {type(e).__name__}: {e}", file=sys.stderr)
+    sys.exit(2)
 sys.exit(1 if 悪い else 0)
 """
 
@@ -104,14 +108,23 @@ def main(引数: list[str]) -> int:
     r = subprocess.run([py, "-I", "-c", _子], input="\0".join(file).encode("utf-8"), capture_output=True)
     sys.stdout.write(r.stdout.decode("utf-8", "replace"))
     sys.stdout.write(r.stderr.decode("utf-8", "replace"))
-    if r.returncode != 0:
-        数 = r.stdout.decode("utf-8", "replace").count("読めない: ")
+    数 = r.stdout.decode("utf-8", "replace").count("読めない: ")
+    if r.returncode == 1 and 数 > 0:
         print(f"赤: CI の Python {版} の文法で読めない .py が {数} 個在る（{py} で照らした）")
         return 1
+    if r.returncode != 0:   # 読めない file を 1 つも挙げずに落ちた＝照らしの子が壊れた（結果ではない）
+        print(f"赤: Python の版の照らしが壊れた（{py} の子が終わりの値 {r.returncode}・読めない file は挙げていない）＝結果ではない・道具を直す")
+        return 2
     print(f"PYTHON={py}")
     print(f"Python の版の照らし: CI の Python {版} の文法で .py {len(file)} 個が読めた（{py} で照らした）")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as e:  # 道具そのものが壊れた＝終わりの値 2（1 の「見つかった・赤」と混ぜない）
+        import traceback
+        traceback.print_exc()
+        print(f"✗ 道具が壊れた（Python の版の照らし・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)

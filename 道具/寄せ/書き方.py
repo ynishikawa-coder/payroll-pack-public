@@ -56,7 +56,7 @@ def 時刻の字(v) -> str | None:
 
 def 直す字(列: str, v) -> str | None:
     """型の書き方の字（直せなければ None）。照らす列でなければ None。"""
-    形 = 当._台帳の形()
+    形 = 当.台帳の形()
     if 列 == "支給月":
         return 支給月の字(v)
     if 列 in 形.日付の列:
@@ -67,11 +67,11 @@ def 直す字(列: str, v) -> str | None:
 
 
 def _合う(列: str, w: str, f: str, t: str) -> bool:
-    return not 当._台帳の形().書き方のずれ(t, [列], [w])
+    return not 当.台帳の形().書き方のずれ(t, [列], [w])
 
 
 def 当てる(o, 記):
-    形 = 当._台帳の形()
+    形 = 当.台帳の形()
     列たち = ("支給月", *形.日付の列, *形.時刻の列)
     直した: dict = {}
     for f, tabs in o.シート.items():

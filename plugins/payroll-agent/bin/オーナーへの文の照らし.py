@@ -10,7 +10,7 @@
   - 検算・原本の読み方: 事務所の担当者へ確認ページで聞く物で、オーナーに聞く物でない。
 止めない（知らせるだけ）。hook の入口（../hooks/見張り.py）が選択肢の画面（AskUserQuestion）の文に当て、当たれば窓へ知らせる。
 番号の形は写さず、パックの正本（パックの場所.番号の形たち）から読んで渡す。読めない時は番号を照らせないと知らせる。
-使い方: python3 オーナーへの文の照らし.py [--パック <dir>] < 文   （当たった数を exit に返す・0=当たり無し）
+使い方: python3 オーナーへの文の照らし.py [--パック <dir>] < 文   （終わりの値: 0=当たり無し／1=当たり有り〔数は出した行で見る〕／2=照らしが壊れた＝結果ではない）
 """
 from __future__ import annotations
 
@@ -104,11 +104,21 @@ def 選択肢の画面の文(args: dict) -> str:
     return "\n".join(字)
 
 
-if __name__ == "__main__":
-    a = sys.argv[1:]
+def main(a: list[str]) -> int:
+    """当たりを 1 行ずつ出す。終わりの値は 0＝当たり無し／1＝当たり有り（数は出した行で見る）。"""
     パック引数 = a[a.index("--パック") + 1] if "--パック" in a[:-1] else None
     パック = 場所.探す(パック引数)
     hits = 照らす(sys.stdin.read(), 場所.番号の形たち(パック) if パック else None, パック is not None, パック引数)
     for h in hits:
         print(h)
-    sys.exit(min(len(hits), 99))
+    return 1 if hits else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as e:  # 道具そのものが壊れた＝終わりの値 2（1 の「当たり有り」と混ぜない）
+        import traceback
+        traceback.print_exc()
+        print(f"✗ 道具が壊れた（オーナーへの文の照らし・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)

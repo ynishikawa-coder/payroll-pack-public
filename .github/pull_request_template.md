@@ -1,7 +1,5 @@
-書いた窓: <session id>
 job: <YYYYMMDD-話題>（payroll-pack）
 触る path: <実際に触った path>
-検査: <scripts/check_all.sh の最後の行・CI の結果 1 行>
 検証した base の先端: <検証（試験・他の PR とのぶつかり）を行った時の base〔多くは main〕の先端の commit。base が進んだら検証し直してここを書き直す＝CI の「検証の鮮度」が違えば知らせる>
 
 ## 種類
@@ -14,7 +12,7 @@ job: <YYYYMMDD-話題>（payroll-pack）
 <!-- なければ「なし（探した所: …）」 -->
 
 ## 検証
-<!-- 走らせた命令とその最後の行 -->
+<!-- 走らせた命令とその最後の行（書いた窓は commit の Claude-Session: を土台の plugin checker の scripts/pr_writer.py --writers で、試験の結果は CI の job check で読む＝頭に写さない） -->
 
 ## 残り（原因の台帳の行）
 <!-- この PR で片付かなかった物（担当の外・レビューの「台帳へ」・入らなかった仕事）は全部、原因の台帳に行を入れてから、1 行ずつ `- 台帳の行 <行の id の末尾 12 字>` だけを書く（題・行き先・直す窓は台帳の行が正本＝ここに写さない）。なければ「なし」 -->

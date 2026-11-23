@@ -273,3 +273,43 @@ def 休憩の表を読む(v) -> dict:
     if out["長さ"] and (out["時間帯"] or out["境"]):
         raise ValueError("時間.休憩の表 に長さの形と時間帯・境の形が混ざっている")
     return out
+
+
+# ---- 支給控除の項目の列（項目.行）の選べる値 ----
+部品の列の置き場 = Path(__file__).resolve().parent / "支給控除の列.json"
+
+
+@lru_cache(maxsize=1)
+def 部品の列() -> dict:
+    """支給控除の項目の列のうち選べる値を持つ列 → {選べる値, 空, 芯が読む}（`芯/支給控除の列.json` が正本）。"""
+    return json.loads(部品の列の置き場.read_text(encoding="utf-8"))["列"]
+
+
+def 部品の行を照らす(行たち) -> tuple[list, list[外れ]]:
+    """項目.行 の全部の行の、選べる値を持つ列を照らす。返す物: (直した行たち, 外れの並び)。
+    当たる字は表の字にそろえる。外の字（空を許さない列の空も）は `空` の値に替え（null なら値を外し）外れを返す＝呼ぶ側が仮＋問い。
+    黙って既定の側へ倒さない（例 欠勤で減る「減らないです」を 減らない とも 減る とも決めない）。"""
+    out, 外 = [], []
+    for r in 行たち or ():
+        if not isinstance(r, dict):
+            out.append(r)
+            continue
+        r = dict(r)
+        for 列, e in 部品の列().items():
+            x = r.get(列)
+            if _空(x):
+                if e["空"] is None:
+                    外.append(外れ(f"支給控除の項目「{r.get('名')}」の {列}", "", None, 訳="空（必ず書く列）"))
+                continue
+            y = {揃える(v): v for v in e["選べる値"]}.get(揃える(x))
+            if y is not None:
+                r[列] = y
+                continue
+            置く = e["空"] or None
+            if 置く is None:
+                r.pop(列, None)
+            else:
+                r[列] = 置く
+            外.append(外れ(f"支給控除の項目「{r.get('名')}」の {列}", str(x), 置く))
+        out.append(r)
+    return out, 外

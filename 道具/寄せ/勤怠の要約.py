@@ -75,7 +75,7 @@ def _月の要約(o, 支給月: str, 日たち: list[dict], 区間たち: list[d
 
 
 def 当てる(o, 記):
-    形 = 当._台帳の形()
+    形 = 当.台帳の形()
     for f, tabs in o.シート.items():
         if not f.startswith("台帳"):
             continue
@@ -84,8 +84,8 @@ def 当てる(o, 記):
             if not rows or any(c not in rows[0] for c in 列たち) or (f, 日のタブ) in 記.待つタブ:
                 continue
             h = [str(c) for c in rows[0]]
-            区間 = 当._行の辞書(tabs.get(区間のタブ) or [])
-            行たち = 当._行の辞書(rows)
+            区間 = 当.行の辞書(tabs.get(区間のタブ) or [])
+            行たち = 当.行の辞書(rows)
             月たち: dict[str, list[int]] = {}
             for n, a in enumerate(行たち):
                 if any(not 当.空か(v) for v in a.values()):

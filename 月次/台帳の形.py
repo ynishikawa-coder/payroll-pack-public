@@ -31,7 +31,7 @@ if str(_根) not in sys.path:   # 支給月の字の正本（芯/支給月の字
 from 芯 import 支給月の字  # noqa: E402
 
 
-def _型の口():
+def 型の口():
     名 = "月次_型の口"
     if 名 not in sys.modules:
         spec = importlib.util.spec_from_file_location(名, _根 / "初期設定" / "型の口.py")
@@ -60,27 +60,27 @@ class 台帳の形の誤り(ValueError):
 
 
 def 見出し(鍵: str) -> list[str]:
-    return _型の口().見出し(*タブたち[鍵])
+    return 型の口().見出し(*タブたち[鍵])
 
 
-def _字(v) -> str:
+def 値の字(v) -> str:
     if v is None:
         return ""
     if isinstance(v, Decimal):
         s = format(v, "f")
         return s.rstrip("0").rstrip(".") if "." in s else s
     if isinstance(v, (list, tuple)):
-        return "、".join(_字(x) for x in v)
+        return "、".join(値の字(x) for x in v)
     return str(v)
 
 
 def _分(v) -> int | None:
-    m = re.fullmatch(r"(\d{1,2}):(\d{2})", _字(v).strip())
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", 値の字(v).strip())
     return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
 def _日の鍵(r) -> tuple:
-    return (支給月の字.殻の字へ(r.get("支給月")), _字(r.get("会社")), _字(r.get("NO")), _字(r.get("日付")))
+    return (支給月の字.殻の字へ(r.get("支給月")), 値の字(r.get("会社")), 値の字(r.get("NO")), 値の字(r.get("日付")))
 
 
 def 出勤と退勤(区間たち) -> dict[tuple, tuple[str, str]]:
@@ -91,14 +91,14 @@ def 出勤と退勤(区間たち) -> dict[tuple, tuple[str, str]]:
     表 B の形（始めは必須・時刻は h:mm。勤怠の形.md §2）は入口が守る前提＝h:mm でない字は読めない時刻として扱う（始めなら区間を見ない・終わりなら打刻抜けと同じ）。"""
     労働: dict[tuple, list] = {}
     for b in 区間たち:
-        if _字(b.get("区間の種別")) == "労働" and _分(b.get("始め")) is not None:
+        if 値の字(b.get("区間の種別")) == "労働" and _分(b.get("始め")) is not None:
             労働.setdefault(_日の鍵(b), []).append(b)
     out = {}
     for k, bs in 労働.items():
         順 = sorted(bs, key=lambda b: (_分(b.get("始め")), _分(b.get("終わり")) is None, _分(b.get("終わり")) or 0))
-        出 = _字(順[0].get("始め")).strip()
+        出 = 値の字(順[0].get("始め")).strip()
         終わり = [b for b in bs if _分(b.get("終わり")) is not None]
-        退 = "" if _分(順[-1].get("終わり")) is None else _字(max(終わり, key=lambda b: _分(b.get("終わり"))).get("終わり")).strip()
+        退 = "" if _分(順[-1].get("終わり")) is None else 値の字(max(終わり, key=lambda b: _分(b.get("終わり"))).get("終わり")).strip()
         out[k] = (出, 退)
     return out
 
@@ -108,7 +108,7 @@ def 出勤と退勤(区間たち) -> dict[tuple, tuple[str, str]]:
 
 def 曜日(日付) -> str:
     """YYYY-MM-DD → 月〜日の 1 字（読めない日付は空）。"""
-    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", _字(日付).strip())
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", 値の字(日付).strip())
     if not m:
         return ""
     try:
@@ -138,14 +138,14 @@ def _写しを足す(鍵: str, 行たち, 写し, *, 厳しく: bool = False, �
     for r in 行たち:
         足す = {}
         for c, v in 写し(r).items():
-            前 = _字(r.get(c)).strip()
+            前 = 値の字(r.get(c)).strip()
             if not 前 or c in 書き直す:
                 足す[c] = v
             elif 厳しく and 前 != v:
-                raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の {c} を「{前}」で渡した（道具の値は「{v}」）。"
+                raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の {c} を「{前}」で渡した（道具の値は「{v}」）。"
                                  f"{c} は道具・芯・置き場が書く写し＝空で渡す")
             elif v and 前 != v:
-                raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の {c} が「{前}」（道具の値は「{v}」＝"
+                raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の {c} が「{前}」（道具の値は「{v}」＝"
                                  f"{'マスタ「社員」の氏名' if c == '氏名' else '区間から作った値'}）。入口の行か区間・マスタを直す")
         out.append({**r, **足す})
     return out
@@ -153,21 +153,21 @@ def _写しを足す(鍵: str, 行たち, 写し, *, 厳しく: bool = False, �
 
 def _氏名を引く(鍵: str, 名: dict, r, 厳しく: bool) -> str:
     """{NO: 氏名} から行の氏名。厳しく なら社員に居ない NO・社員の 氏名 が空の NO は止める（黙って空の氏名で書かない）。"""
-    no = _字(r.get("NO"))
+    no = 値の字(r.get("NO"))
     if 厳しく and no and no not in 名:
         raise 台帳の形の誤り(f"{鍵}: NO {no} はマスタ「社員」に居ない（氏名を引けない）。社員の行か NO を直してから書く")
-    if 厳しく and no and not _字(名[no]).strip():
+    if 厳しく and no and not 値の字(名[no]).strip():
         raise 台帳の形の誤り(f"{鍵}: NO {no} のマスタ「社員」の 氏名 が空（氏名を引けない）。社員の 氏名 を埋めてから書く")
-    return _字(名.get(no, ""))
+    return 値の字(名.get(no, ""))
 
 
 def _原本の在り処(鍵: str, リンク: dict, r) -> str:
     """{原本の名前: 在り処}（殻が置き場の一覧から渡す）から行の 原本のリンク。名が在って在り処が無ければ止める。"""
-    n = _字(r.get("原本の名前")).strip()
+    n = 値の字(r.get("原本の名前")).strip()
     if n and n not in リンク:
-        raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の原本「{n}」の在り処が 原本のリンク に無い"
+        raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の原本「{n}」の在り処が 原本のリンク に無い"
                          "（置き場の一覧から渡す＝窓が URL を書かない）")
-    return _字(リンク.get(n, "")) if n else ""
+    return 値の字(リンク.get(n, "")) if n else ""
 
 
 日付の形 = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -193,19 +193,19 @@ def 書き方のずれ(鍵: str, h: list[str], 行: list[str]) -> list[str]:
     return out
 
 
-def _表(鍵: str, 行たち) -> list[list[str]]:
+def 表にする(鍵: str, 行たち) -> list[list[str]]:
     h = 見出し(鍵)
     out = [list(h)]
     for r in 行たち:
-        外 = sorted(k for k, v in r.items() if k not in h and not str(k).startswith("_") and _字(v).strip())
+        外 = sorted(k for k, v in r.items() if k not in h and not str(k).startswith("_") and 値の字(v).strip())
         if 外:
             raise 台帳の形の誤り(f"{鍵}: 型の列に無い値 {外}（型を直すか、入口の行を型の列へ）")
-        行 = [支給月の字.殻の字へ(r.get(c)) if c == "支給月" else _字(r.get(c)) for c in h]
+        行 = [支給月の字.殻の字へ(r.get(c)) if c == "支給月" else 値の字(r.get(c)) for c in h]
         ずれ = 書き方のずれ(鍵, h, 行)
         if ずれ:
-            raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の書き方が型と違う {ずれ}")
-        if "要確認の理由" in h and _字(r.get("読み取りの確かめ")).strip() == "要確認" and not _字(r.get("要確認の理由")).strip():
-            raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} は 要確認 なのに 要確認の理由 が空（入口が理由を 1 行で書く）")
+            raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の書き方が型と違う {ずれ}")
+        if "要確認の理由" in h and 値の字(r.get("読み取りの確かめ")).strip() == "要確認" and not 値の字(r.get("要確認の理由")).strip():
+            raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} は 要確認 なのに 要確認の理由 が空（入口が理由を 1 行で書く）")
         out.append(行)
     return out
 
@@ -237,7 +237,7 @@ def 人ごとの表(集計の行, 人の状態=(), 氏名: dict | None = None) -
     for k in sorted(人たち, key=lambda k: (k[0], k[1], (0, int(k[2]), k[2]) if k[2].isdigit() else (1, 0, k[2]))):
         d = 人たち[k]
         s = "仮" if 状態.get(k) == "仮" or d["_仮"] else "確認済"
-        out.append([k[1], 支給月の字.殻の字へ(k[0]), k[2], _字(氏名.get(k[2], "")), s] + [_字(d.get(c)) for c in 語])
+        out.append([k[1], 支給月の字.殻の字へ(k[0]), k[2], 値の字(氏名.get(k[2], "")), s] + [値の字(d.get(c)) for c in 語])
     return out
 
 
@@ -269,20 +269,20 @@ _問いの訳 = re.compile(r"問い:\S.*")
 
 
 def _始業から扱いを照らす(鍵: str, r: dict, 確定: bool) -> None:
-    if 始業から扱い not in re.split(r"[、,・\s]+", _字(r.get("印"))):
+    if 始業から扱い not in re.split(r"[、,・\s]+", 値の字(r.get("印"))):
         return
     if not 確定:
-        raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の 印 {始業から扱い} は確定した勤怠にだけ置く（問いの答え）")
-    if not _問いの訳.fullmatch(_字(r.get(直した訳の列)).strip()):
-        raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の 印 {始業から扱い} は 直した訳 `問い:<問いの番号>` と一緒に置く")
+        raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の 印 {始業から扱い} は確定した勤怠にだけ置く（問いの答え）")
+    if not _問いの訳.fullmatch(値の字(r.get(直した訳の列)).strip()):
+        raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の 印 {始業から扱い} は 直した訳 `問い:<問いの番号>` と一緒に置く")
 
 
 def _確定のタブへ(鍵: str, 行たち) -> list[dict]:
     """確定した勤怠へ書く行: 要確認の行は書かない（止める）。読み取りの確かめ が空なら 確認済（締めた＝確かめ終えた日）。"""
     out = []
     for r in 行たち:
-        if _字(r.get("読み取りの確かめ")).strip() == "要確認":
-            raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} は 要確認 のまま（確かめた日だけを確定した勤怠へ書く）")
+        if 値の字(r.get("読み取りの確かめ")).strip() == "要確認":
+            raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} は 要確認 のまま（確かめた日だけを確定した勤怠へ書く）")
         out.append({**r, "読み取りの確かめ": "確認済"})
     return out
 
@@ -301,7 +301,7 @@ def 勤怠の表たち(*, 確定: bool, 勤怠=(), 勤怠の区間=(), 氏名: d
     出退 = 出勤と退勤(勤怠の区間)
     要約 = None if 日の要約 is None else 日の要約の表(日の要約)
     for r in [*勤怠, *勤怠の区間]:
-        訳 = _字(r.get(直した訳の列)).strip()
+        訳 = 値の字(r.get(直した訳の列)).strip()
         if 訳 and not 直した訳の形.fullmatch(訳):
             raise 台帳の形の誤り(f"直した訳「{訳}」は `決まり:<見出し>`・`問い:<問いの番号>`・`読み直し:<日>`")
     for r in 勤怠:
@@ -310,7 +310,7 @@ def 勤怠の表たち(*, 確定: bool, 勤怠=(), 勤怠の区間=(), 氏名: d
     行 = _写しを足す(日, _確定のタブへ(日, 勤怠) if 確定 else list(勤怠),
                  lambda r: _日の写し(r, 名, 出退, 要約, 鍵=日, 厳しく=厳しく, リンク=原本のリンク), 厳しく=厳しく, 書き直す=書き直す)
     区間 = _写しを足す(区, 勤怠の区間, lambda r: {"氏名": _氏名を引く(区, 名, r, 厳しく)}, 厳しく=厳しく)
-    return {日: _表(日, 行), 区: _表(区, 区間)}
+    return {日: 表にする(日, 行), 区: 表にする(区, 区間)}
 
 
 def 台帳へ書く形(*, 集計の行=(), 人の状態=(), 氏名: dict | None = None) -> dict[str, list[list[str]]]:
@@ -338,24 +338,24 @@ def _見出しを照らす(鍵: str, 表) -> None:
 
 def _確定の行(鍵: str, r: dict, 整数の列: tuple) -> dict:
     h = 見出し(鍵)
-    外 = sorted(k for k, v in r.items() if k not in h and not str(k).startswith("_") and _字(v).strip())
+    外 = sorted(k for k, v in r.items() if k not in h and not str(k).startswith("_") and 値の字(v).strip())
     if 外:
         raise 台帳の形の誤り(f"{鍵}: 型の列に無い値 {外}")
-    訳 = _字(r.get(直した訳の列)).strip()
+    訳 = 値の字(r.get(直した訳の列)).strip()
     if 訳 and not 直した訳の形.fullmatch(訳):
-        raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の 直した訳「{訳}」は `決まり:<見出し>`・`問い:<問いの番号>`・`読み直し:<日>`")
+        raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の 直した訳「{訳}」は `決まり:<見出し>`・`問い:<問いの番号>`・`読み直し:<日>`")
     out = {}
     for c in h:
-        v = _字(r.get(c)).strip()
+        v = 値の字(r.get(c)).strip()
         if not v or c == 直した訳の列 or c in 写しの列:
             continue
         if c == "支給月":
             if not (支給月の字.その形か(v, "殻") or 支給月の字.その形か(v, "中")):
-                raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} の 支給月「{v}」（YYYY.MM支給）")
+                raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} の 支給月「{v}」（YYYY.MM支給）")
             v = 支給月の字.そろえる(v, "中")
         elif c in 整数の列:
             if not re.fullmatch(r"\d+", v):
-                raise 台帳の形の誤り(f"{鍵}: NO {_字(r.get('NO'))} {_字(r.get('日付'))} の {c}「{v}」は整数（分・番号）")
+                raise 台帳の形の誤り(f"{鍵}: NO {値の字(r.get('NO'))} {値の字(r.get('日付'))} の {c}「{v}」は整数（分・番号）")
             out[c] = int(v)
             continue
         out[c] = v
@@ -391,7 +391,7 @@ def 写しの値(タブ: str, 行たち: list[dict], 氏名: dict | None = None,
     休憩の合計・労働の合計 は返さない（寄せは直しを当て終えてから 道具/寄せ/勤怠の要約.py が芯で数えて埋める）。"""
     名 = {str(k): v for k, v in (氏名 or {}).items()}
     if タブ not in (*日のタブ, "勤怠"):
-        return [{"氏名": _字(名.get(_字(r.get("NO")), ""))} for r in 行たち]
+        return [{"氏名": 値の字(名.get(値の字(r.get("NO")), ""))} for r in 行たち]
     出退 = 出勤と退勤(区間たち)
     要約 = None if 日の要約 is None else 日の要約の表(日の要約)
     return [_日の写し(r, 名, 出退, 要約) for r in 行たち]

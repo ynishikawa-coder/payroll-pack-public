@@ -9,6 +9,9 @@
     "once": "この月だけの事を確かめます"
    },
    "prior_check_cmd": "python3 \"${PAYROLL_PACK_DIR:-.}/確認ページ/前の答え.py\""
+  },
+  "big-picture": {
+   "agreed": "全体の絵: 給与計算"
   }
  }
 }

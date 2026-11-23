@@ -21,7 +21,7 @@ _spec.loader.exec_module(照)
 
 
 def _本文(c: str) -> str:
-    return f"親窓: 作り物\n書いた窓: 作り物\n検査: 緑: 全部の検査が通った\n{照.欄の名}: {c}\n\n## 検証\n- #999 とぶつからない\n"
+    return f"job: 作り物\n{照.欄の名}: {c}\n\n## 検証\n- #999 とぶつからない\n"
 
 
 def test_今の先端で検証し_PRの先端がそれを含む本文は通る():
