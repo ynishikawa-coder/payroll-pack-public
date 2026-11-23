@@ -1,13 +1,10 @@
 """② 見張り: repo の 法の表/源泉_報酬.json（試験の作り物の表でなく）で、委託の人の源泉が仮にならないこと。
 
-芯/計算/委託.py（#27）がまだ main に無い間は飛ばす（入ったら回る）。
+芯/計算/委託.py は在る＝飛ばさず回す（前は「まだ無い」と importorskip で飛ばし、在っても import が崩れると黙って飛んだ）。
 """
-import pytest
-
-pytest.importorskip("芯.計算.委託")
-
-from 作る_計算 import 人, 決まり, 置き場, 月の数字  # noqa: E402
-from 芯.計算 import 計算する  # noqa: E402
+import 芯.計算.委託  # noqa: F401  在ることも確かめる（無ければ集める所で赤）
+from 作る_計算 import 人, 決まり, 置き場, 月の数字
+from 芯.計算 import 計算する
 
 
 def test_委託の人の源泉はrepoの表で仮にならない(tmp_path):

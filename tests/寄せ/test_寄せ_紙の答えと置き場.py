@@ -5,6 +5,7 @@
 3. 紙は Drive に雛形の写しを置く段を持たない（Drive の型は「Drive に雛形のフォルダを置かない」）。
 注入: 紙の 1.4 に「99_ へ写して消す」を戻す・人が見る物の置き場を「確認の HTML の置き場」に戻すと赤。
 """
+import json
 import re
 from pathlib import Path
 
@@ -21,7 +22,8 @@ def _節(見出し: str) -> str:
 
 
 def test_選べる答えの写して消すは道具の字と同じ():
-    頭 = re.search(r'^写しの頭 = "([^"/]+)/', 道具, re.M).group(1)   # 道具の写しの置き場（9_履歴）が正本
+    頭 = json.loads((根 / "初期設定" / "型.json").read_text(encoding="utf-8"))["木"]["名"]["履歴"]   # 写しの置き場の名の正本（型.json）
+    assert 'f"{履歴の名}/消す_"' in 道具   # 道具の写しの置き場は型の 履歴 から引く
     紙の答え = set(re.findall(r"([0-9]+_\S*) へ写して消す", _節("### 1.4")))
     assert 紙の答え == {頭}, (紙の答え, 頭)
     assert f'"{頭} へ写して消す"' in 道具
@@ -31,5 +33,7 @@ def test_置き場は_Drive_の型の表に在る物で書く():
     assert "確認の HTML の置き場" not in 紙
     assert "Drive に雛形のフォルダを置かない" in 型
     assert "雛形の写しを上書き" not in 紙
-    for 置き場 in ("`10_会社/<会社>/8_確認事項/`", "`00_事務所/`"):
-        assert 置き場 in 型
+    # 置き場の道は文書に写さず 型.json の 木.確認事項の置き場 を指す（道の正本は 1 か所）
+    assert "木.確認事項の置き場" in 型 and "python3 初期設定/型の口.py 木" in 型
+    木 = json.loads((根 / "初期設定" / "型.json").read_text(encoding="utf-8"))["木"]
+    assert set(木["確認事項の置き場"]) == {"<組>", "事務所"}

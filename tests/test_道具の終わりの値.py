@@ -86,7 +86,7 @@ def test_答え合わせの道具_壊れたら2_差は1(tmp_path):
     _壊れた2(_回す("", "-m 道具.答え合わせ", 引数))
     assert not (tmp_path / "差.json").exists()   # 出す file は書かれない
     # 意味のある 1（要確認がある）は 1 のまま
-    (tmp_path / "芯.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "芯.json").write_text(json.dumps({"行": [], "人の状態": []}), encoding="utf-8")
     (tmp_path / "答え.json").write_text(json.dumps({"行": [], "要確認": ["作り物の要確認"]}), encoding="utf-8")
     r = _回す("", "-m 道具.答え合わせ", 引数)
     assert r.returncode == 1 and 壊れた not in r.stderr, (r.returncode, r.stderr)

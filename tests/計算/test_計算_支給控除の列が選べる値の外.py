@@ -56,12 +56,49 @@ def test_読まない列でも外の字は仮(tmp_path):
     assert r["人"][0]["状態"] == "仮"
 
 
-def test_型の意味は選べる値を全部書く():
-    # 初期設定/型.json（事務所が書く表の説明）と 芯/支給控除の列.json（芯が照らす正本）が食い違わない
+def _意味の選べる値(文: str) -> set[str]:
+    """型.json の「意味」の文から選べる値の並びを読む（最初の「（」の前・「: 」の後を「・」で割る）。"""
+    頭 = 文.split("（", 1)[0]
+    if ": " in 頭:
+        頭 = 頭.rsplit(": ", 1)[1]
+    return {x.strip() for x in 頭.split("・") if x.strip()}
+
+
+def _意味と表の食い違い(意味: dict, 列たち: dict) -> list[str]:
+    out = []
+    for 列, e in 列たち.items():
+        if 列 not in 意味:
+            out.append(f"型.json の 支給控除の項目 に列 {列} が無い")
+            continue
+        書いた, 選べる = _意味の選べる値(意味[列]), set(e["選べる値"])
+        if 書いた != 選べる:
+            out.append(f"型.json の {列} の意味の値 {sorted(書いた)} と 芯/支給控除の列.json の選べる値 {sorted(選べる)} が食い違う")
+    return out
+
+
+def _型の意味() -> dict:
     型 = json.loads((根 / "初期設定" / "型.json").read_text(encoding="utf-8"))
     タブ = next(t for s in 型["シート"] for t in s.get("タブ", ()) if isinstance(t, dict) and t.get("タブ") == "支給控除の項目")
-    意味 = {c["名"]: c["意味"] for c in タブ["列"]}
-    for 列, e in 設定.部品の列().items():
-        assert 列 in 意味, f"型.json の 支給控除の項目 に列 {列} が無い"
-        for 字 in e["選べる値"]:
-            assert 字 in 意味[列], f"型.json の {列} の意味に選べる値「{字}」が無い"
+    return {c["名"]: c["意味"] for c in タブ["列"]}
+
+
+def test_型の意味は選べる値を全部書く():
+    # 初期設定/型.json（事務所が書く表の説明）と 芯/支給控除の列.json（芯が照らす正本）が両向きに食い違わない
+    # （表に足した値を意味に書き忘れる・表から消した値が意味に残る、のどちらも赤）
+    assert _意味と表の食い違い(_型の意味(), 設定.部品の列()) == []
+
+
+def test_注入_意味に表から消えた値が残ると赤():
+    列たち = 設定.部品の列()
+    列 = next(iter(列たち))
+    意味 = dict(_型の意味())
+    意味[列] = "・".join(list(列たち[列]["選べる値"]) + ["半分"])
+    assert any("半分" in x for x in _意味と表の食い違い(意味, 列たち))
+
+
+def test_注入_意味に表の値が欠けると赤():
+    列たち = 設定.部品の列()
+    列 = next(iter(列たち))
+    意味 = dict(_型の意味())
+    意味[列] = "・".join(list(列たち[列]["選べる値"])[:-1])
+    assert _意味と表の食い違い(意味, 列たち) != []

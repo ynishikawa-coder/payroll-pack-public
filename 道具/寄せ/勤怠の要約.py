@@ -42,7 +42,7 @@ def _月の要約(o, 支給月: str, 日たち: list[dict], 区間たち: list[d
     from 芯.集計 import 集計する
     from 芯.集計.法の線の橋 import 法の線を引く
     マスタ = {}
-    for f in 当.ファイルたち(o, "2_マスタ"):
+    for f in 当.ファイルたち(o, 当.マスタの名):
         for t in 決まりのタブ:
             if o.シート[f].get(t):
                 マスタ.setdefault(t, o.シート[f][t])

@@ -9,14 +9,14 @@
   1. シートの道具の書き込み（update_values・append_values・batch_clear_values・update_formulas・update_spreadsheet・
      insert_dimension・copy_sheet_to_another_spreadsheet）で、宛先の本の名が出す物の名の頭（パックの出口が知る物
      `<物>_`＝取り込み_・賞与の取り込み_・支給控除一覧_…・有給休暇管理表_）で始まる・出荷の口の印がある
-  2. 同じ書き込みで、宛先の名に `管理表` を含み、回の状況のタブ（月の状況・賞与の状況…＝パックの管理表の型で「回」を持つ
+  2. 同じ書き込みで、宛先の名に管理表の本の名（パックの 型.json の木）を含み、回の状況のタブ（月の状況・賞与の状況…＝パックの管理表の型で「回」を持つ
      タブの全部・パックの場所.守るタブたち）の 取り込み・納品 の欄に掛かる／止まりの理由 の欄に `今の版` を書く／範囲の無い構造の書き込み
   3. Drive の道具の create_file・copy_file で名が 1 の頭で始まる物、update_file・copy_file の元が 1 の本
   4. Bash で、殻が渡した「置き換える命令」の名から次の区切りまでの引数に replace が在り（例 `<命令> replace <id>`）、宛先が
      1 の本。命令の文は字で分けて見る（replace の字が在るだけでは止めない）。分けられない文・見分けられない字は止める
-  5. 名の照らし: Drive の道具で確認ページ（名の頭 `確認事項_`・前の形 `確認ページ_`）を作る時、名がパックの確認ページの名の形
+  5. 名の照らし: Drive の道具で確認ページ（名の頭はパックの 確認ページ.py の 名の頭たち＝今の形と前の形）を作る時、名がパックの確認ページの名の形
      （確認ページ/確認ページ.py の 名の形）でない・置き場が違う（同じ所の 置き場の名たち＝名の 組 が 事務所 なら 事務所 の
-     フォルダ〔00_事務所〕・ほかは会社のフォルダ〔8_確認事項〕。正本は docs/設計/Drive の型.md §3 の表）
+     フォルダ・ほかは会社のフォルダ。正本は 初期設定/型.json の 木.確認事項の置き場）
 宛先の名が引けない時は止める（引けない＝見分けられない）。名を引く口が「見えない」と返した本（出荷の口に見えない本）は通す。
 名・タブ・見出し・値の字は、パックの字のそろえ方の正本（芯/字.py・口の 字）でそろえてから比べる（頭の空白・全角・幅の無い字で
 抜けない）。そろえ方が渡らない口は見分けられない＝止める。
@@ -33,10 +33,8 @@ from typing import Callable
                "insert_dimension", "copy_sheet_to_another_spreadsheet")
 構造 = ("update_spreadsheet", "batch_clear_values", "insert_dimension")
 Driveの書き込み = ("create_file", "copy_file", "update_file")
-管理表の語 = "管理表"
 出荷の欄 = ("取り込み", "納品")
 今の版の欄, 今の版の頭 = "止まりの理由", "今の版"
-確認ページの頭たち = ("確認事項_", "下書き_確認事項_", "確認ページ_", "下書き_確認ページ_")   # 今の形と前の形（前の形は名の形に合わない＝止める）
 
 
 @dataclass
@@ -47,8 +45,10 @@ class 口:
     見出しを引く: Callable[[str, str], list]             # (本の id, タブ) → 1 行目
     印: str = ""                                          # 出荷の口が置いた本の印（appProperties の鍵・値 "1"）
     置き換える命令: tuple[str, ...] = ()                   # Bash の `<命令> replace <id>` の命令の名（末尾で見る）
-    確認ページの形: tuple[str, dict] | None = None         # (名の正規表現, {"<会社>": フォルダの名, "事務所": フォルダの名})。パックに無い版では None
+    確認ページの形: tuple[str, dict] | None = None         # (名の正規表現, {"会社": フォルダの名, "事務所": フォルダの名})＝パックの場所.確認ページの名の形。パックに無い版では None
     守るタブ: tuple[str, ...] = ()                        # 管理表の回の状況のタブの名（パックの場所.守るタブたち）。空＝見分けられない＝止める
+    管理表の名: str = ""                                  # 管理表の本の名（パックの場所.管理表の名＝型.json の木）。空＝見分けられない＝止める
+    確認ページの頭たち: tuple[str, ...] = ()              # 確認ページの名の頭（今の形と前の形・パックの場所.確認ページの頭たち）。空＝止める
     字: object = None                                     # 字のそろえ方の正本（パックの 芯.字）。無い＝見分けられない＝止める
     引いた: list = field(default_factory=list)
 
@@ -109,7 +109,9 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
         return f"書く先の本（{sid}）の名が引けない＝出す物の本か管理表か見分けられない"
     if 出す物の本か(m, k):
         return f"出す物の本（{m.get('name')}）へ道具で直に書く"
-    if not k.字.含む(m.get("name", ""), 管理表の語):
+    if not k.管理表の名:
+        return f"管理表の本の名がパック（初期設定/型.json の木）から読めない＝書く先（{m.get('name')}）が管理表か見分けられない"
+    if not k.字.含む(m.get("name", ""), k.管理表の名):
         return None
     if short in 構造:
         return f"管理表（{m.get('name')}）の形を道具で変える・範囲を消す"
@@ -147,7 +149,9 @@ def _drive(short: str, args: dict, k: 口) -> str | None:
     名 = str(args.get("name") or args.get("title") or (args.get("metadata") or {}).get("name") or "")
     if k.字.頭が(名, k.名の頭たち):
         return f"Drive の道具で出す物の本（{名}）を作る"
-    if k.字.頭が(名, 確認ページの頭たち):
+    if not k.確認ページの頭たち:
+        return f"確認ページの名の形（名の頭たち＝確認ページ/確認ページ.py）がパックから読めない＝{名 or '名の無い物'} が確認ページか見分けられない"
+    if k.字.頭が(名, k.確認ページの頭たち):
         外れ = 確認ページの名の外れ(名, args, k)
         if 外れ:
             return 外れ
@@ -174,7 +178,7 @@ def 確認ページの名の外れ(名: str, args: dict, k: 口) -> str | None:
     組 = m.groupdict().get("組")
     if not 組 or not isinstance(置き場たち, dict):
         return f"確認ページ {名} の組か置き場の名たちが読めない＝置き場を見分けられない"
-    置き場 = 置き場たち.get("事務所" if 組 == "事務所" else "<会社>")
+    置き場 = 置き場たち.get("事務所" if 組 == "事務所" else "会社")   # 鍵は役の名（会社の根の印の字はパックだけが持つ）
     if not 置き場:
         return f"確認ページ {名} の置き場の名がパックに無い＝置き場を見分けられない"
     parents = args.get("parents") or args.get("parentId") or args.get("parent_id") or (args.get("metadata") or {}).get("parents")
