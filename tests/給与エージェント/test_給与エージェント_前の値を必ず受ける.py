@@ -32,27 +32,29 @@ def _名(物, n):
 
 def test_管理表の行は今の止まりの理由を省けず_字でなければ止める():
     with pytest.raises(TypeError):
-        G.管理表の行(入力(), "n", "u")   # 既定の "" を畳んだ
+        G.管理表の行(入力())   # 既定の "" を畳んだ
     for v in (None, ["例の確かめ待ち"], 1):
         with pytest.raises(ValueError, match="止まりの理由 の欄の字で渡す"):
-            G.管理表の行(入力(), "n", "u", v)
-    # 空の欄は "" で渡せば今の版だけ・ほかの理由が在れば残す（有給休暇管理表の訳が付かない 支給控除一覧 の出荷で見る）
+            G.管理表の行(入力(), v)
+    # 空の欄は "" で渡せば空・ほかの理由が在れば残す（有給休暇管理表の訳が付かない 支給控除一覧 の出荷で見る）
     一覧 = 入力(出す物("支給控除一覧_雇用"))
-    assert G.管理表の行(一覧, "n", "u", "")["止まりの理由"] == "今の版: n u"
-    assert G.管理表の行(一覧, "n", "u", "例の確かめ待ち")["止まりの理由"] == "例の確かめ待ち ／ 今の版: n u"
+    assert G.管理表の行(一覧, "")["止まりの理由"] == ""
+    assert G.管理表の行(一覧, "例の確かめ待ち")["止まりの理由"] == "例の確かめ待ち"
 
 
 def test_命令の管理表の行は今の止まりの理由を省くと止め_空の字は通す(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(証, "パックの版", lambda: 版)
     f = tmp_path / "in.json"
     f.write_text(json.dumps(入力(), ensure_ascii=False), encoding="utf-8")
-    頭 = ["管理表の行", str(f), "--パック", str(根), "--名", "n_v1", "--url", "u"]
+    d = 入力()["出す物"][0]
+    頭 = ["管理表の行", str(f), "--パック", str(根), "--置いた",
+          json.dumps([{"物": d["物"], "名": d["名"]["名"], "url": "u"}], ensure_ascii=False)]
     for 足す in ([], ["--今の止まりの理由"]):   # 省く・値の無い旗
         assert G.main(頭 + 足す) == 2
         out = json.loads(capsys.readouterr().out)
         assert not out["通す"] and "--今の止まりの理由" in out["赤"][0] and "管理表の行" not in out
-    assert G.main(頭 + ["--今の止まりの理由", "例の確かめ待ち"]) == 0
-    assert json.loads(capsys.readouterr().out)["管理表の行"]["止まりの理由"].endswith("例の確かめ待ち ／ 今の版: n_v1 u")
+    assert G.main(頭 + ["--今の止まりの理由", "例の確かめ待ち ／ 今の版: 前の形 u0"]) == 0
+    assert json.loads(capsys.readouterr().out)["管理表の行"]["止まりの理由"].endswith("例の確かめ待ち")
 
 
 # --- 名の版: 前の版の最大の次だけ通す（材料 今ある名・履歴にある名 は必ず渡す） ---
@@ -98,7 +100,8 @@ def test_命令の管理表の行は置いたばかりの名だけを前の版�
     x = 入力()
     置いた = x["出す物"][0]["名"]["名"]
     f = tmp_path / "in.json"
-    頭 = ["管理表の行", str(f), "--パック", str(根), "--名", 置いた, "--url", "u", "--今の止まりの理由", ""]
+    頭 = ["管理表の行", str(f), "--パック", str(根), "--置いた",
+          json.dumps([{"物": x["出す物"][0]["物"], "名": 置いた, "url": "u"}], ensure_ascii=False), "--今の止まりの理由", ""]
     for 今 in ([置いた], [f"{置いた}.csv"]):
         x["材料"]["今ある名"] = 今
         f.write_text(json.dumps(x, ensure_ascii=False), encoding="utf-8")
