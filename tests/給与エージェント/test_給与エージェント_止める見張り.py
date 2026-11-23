@@ -68,6 +68,15 @@ def test_管理表の出荷の欄と今の版と形の変更は止める():
     assert j("x__update_values", spreadsheetId="L1", range="A1", values=[["x"]])
 
 
+def test_出した物のタブの今の版とリンクは窓が手で書けない():
+    # 壊す: 出した物 を守るタブから落とす・出荷の欄に 今の版・リンク を入れ忘れる＝窓が一部の物だけ手でリンクを書ける
+    出した物の見出し = ["会社", "組", "支給月", "回", "物", "今の版", "リンク", "更新日"]
+    k = 口(見出しを引く=lambda sid, tab: 出した物の見出し if tab == "出した物" else 見出し)
+    for rng in ("'出した物'!F2", "'出した物'!G2", "'出した物'!A2:H2"):
+        assert W.判定("x__update_values", {"spreadsheetId": "L1", "range": rng, "values": [["手で書いた"]]}, k), rng
+    assert W.判定("x__append_values", {"spreadsheetId": "L1", "range": "'出した物'!A1", "values": [["作り物"]]}, k)
+
+
 def test_名と見出しの引けない本は止める():
     assert j("x__update_values", spreadsheetId="不明", range="A1", values=[["1"]])
     assert j("x__update_values", spreadsheetId=None, range="A1")
