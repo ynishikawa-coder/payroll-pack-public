@@ -7,8 +7,8 @@ Drive を開かない。殻が読んだ値（get_values の JSON・md の本文�
 
 会社の物（入力の JSON）:
   {"会社": "作り物の会社", "型の版": 0, "選んだ部品": [],
-   "シート": {"2_マスタ": {"社員": [[見出し…], [値…], …]}, …},   ← タブごとの get_values
-   "式": {"2_マスタ": {"社員": [[行, 列], …]}},                  ← 式のセル（0 始まり・任意）
+   "シート": {マスタの名: {"社員": [[見出し…], [値…], …]}, …},   ← タブごとの get_values
+   "式": {マスタの名: {"社員": [[行, 列], …]}},                  ← 式のセル（0 始まり・任意）
    "md": {"1_決まり/給与のルール.md": "本文"},
    "置き場": ["1_決まり/", "1_決まり/給与のルール.md", …],       ← 組の根からの名（フォルダは / で終わる）
    "人の答え": {"<寄せられない物の鍵>": "<選んだ答え>",
@@ -30,6 +30,10 @@ from pathlib import Path as _Path
 _spec = _imp.spec_from_file_location("初期設定_型の口_寄せ", _Path(__file__).resolve().parents[2] / "初期設定" / "型の口.py")
 型の口 = _imp.module_from_spec(_spec)
 _spec.loader.exec_module(型の口)
+# Drive の名の正本は 型.json の木（写さない）。寄せの写しを置く 9_履歴/ と照らすシートの名はここから引く
+マスタの名 = 型の口.名("マスタ")
+履歴の名 = 型の口.名("履歴")
+台帳の頭 = 型の口.名の形("台帳")["形"].split("<", 1)[0]
 
 # 設定の選べる値は 芯/設定の表.json の 1 枚（芯/設定.py が読み口）。寄せはマスタへ書く前にここで照らす（表の外の字を書く手順に出さない）
 import sys as _sys
@@ -148,7 +152,7 @@ def 型を読む(型: dict) -> dict:
                     c["必須"] = True  # Drive の型 §1: 全タブの列「会社」は必須
                 if c["名"] == "項目" and t.get("語"):
                     c["選べる値"] = list(t["語"])
-                if c["名"] == "項目" and s["シート"] == "2_マスタ" and t["タブ"] == "会社":
+                if c["名"] == "項目" and s["シート"] == マスタの名 and t["タブ"] == "会社":
                     c["形"] = r"[^.\s]+\.\S+"  # 会社の決まり.md §1.3: 項目は `分野.名`
                 if c["名"] == "項目" and t["タブ"] in 設定のタブ and 項目たち:
                     # 項目の辞書に無い名（前の名・打ち間違い）は芯が読まない＝今の名の値が黙って既定になる＝問い
@@ -223,7 +227,13 @@ def そろえる(rows: list) -> list[list[str]]:
 class 物:
     def __init__(self, d: dict):
         self.会社 = d["会社"]
-        self.版 = int(d.get("型の版", 0) or 0)
+        # 型の版は必須（既定は無い）。欠けた版を 0（前の道具の形）と読むと、今の型で書いた会社に前の道具からの直しを
+        # 全部当て・前の道具の空の値を書き込むので止める（前の道具の形なら 0 を明示で渡す）
+        v = d.get("型の版")
+        if v is None or str(v).strip() == "":
+            raise ValueError(f"寄せの入力（会社「{self.会社}」）に 型の版 が無い（0＝前の道具の形と読まない。"
+                             "管理表「会社」の 型の版 を渡す・前の道具の形なら 0 を明示で渡す）")
+        self.版 = int(v)
         self.部品 = list(d.get("選んだ部品", []))
         self.シート = {f: {t: そろえる(v) for t, v in tabs.items()} for f, tabs in d.get("シート", {}).items()}
         self.式 = {(f, t, int(r), int(c)) for f, tabs in d.get("式", {}).items() for t, cells in tabs.items() for r, c in cells}
@@ -446,7 +456,7 @@ def _写しを埋める(o: 物, f: str, t: str, rows: list, i: int, 名: str, �
     値は台帳の形（月次/台帳の形.py）と同じ作り方。在る値は変えない（空の欄だけ）。休憩の合計・労働の合計 はここで埋めない
     （芯の数え＝決まりが要る。直しを当て終えた今の形で 勤怠の要約.py が芯で数えて埋める）。"""
     氏名 = {}
-    for ff in ファイルたち(o, "2_マスタ"):
+    for ff in ファイルたち(o, マスタの名):
         for a in 行の辞書(o.シート[ff].get("社員") or []):
             if not 空か(a.get("NO")) and not 空か(a.get("氏名")):
                 氏名[str(a["NO"])] = a["氏名"]
@@ -1787,7 +1797,7 @@ def 写しから戻す(o: 物, K: dict) -> dict:
     for m in K["md"]:
         if m in o.md:
             continue
-        写し = sorted(k for k in o.md if re.fullmatch(r"9_履歴/消す_\d{4}-\d{2}-\d{2}_" + re.escape(m.replace("/", "_")), k))
+        写し = sorted(k for k in o.md if re.fullmatch(re.escape(履歴の名) + r"/消す_\d{4}-\d{2}-\d{2}_" + re.escape(m.replace("/", "_")), k))
         if 写し:
             o.md[m] = o.md[写し[-1]]
             戻した[m] = 写し[-1]
@@ -1841,7 +1851,7 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
     渡し = [x for x in 変わる if (x[2], x[3]) in 渡す]
     書く, 戻す = [], []
     for f in sorted({x[0] for x in 変わる if x[0]}):
-        書く.append({"する": "file を写す", "元": f, "先": f"9_履歴/消す_{消す日}_{f.replace('/', '_')}"})
+        書く.append({"する": "file を写す", "元": f, "先": f"{履歴の名}/消す_{消す日}_{f.replace('/', '_')}"})
     for a, b in 記.移した:
         書く.append({"する": "file を移す", "前": a, "後": b})
     for f, a, b in 記.タブの名:
@@ -1851,7 +1861,7 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
     # md は Drive の口で中身を直せない（canEdit=false）＝元を 9_履歴 へ移し（寄せの写しを兼ねる）、同じ名で新しく作る
     for m, text in md_変わる:
         if m not in 戻した_md:  # 写しから戻した md は元がもう 9_履歴 に在る＝作るだけ
-            書く.append({"する": "file を移す", "前": 今の名(m), "後": f"9_履歴/消す_{消す日}_{今の名(m).replace('/', '_')}"})
+            書く.append({"する": "file を移す", "前": 今の名(m), "後": f"{履歴の名}/消す_{消す日}_{今の名(m).replace('/', '_')}"})
         書く.append({"する": "md を作る", "名": 今の名(m), "本文": text})
     for _, _, nf, nt, rows, after in 受け + 渡し:
         h, w = 大きさ(rows or [], after)
@@ -1867,8 +1877,8 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
                    "書き方": 字のまま})
     戻した_md = 戻した_md or {}
     for m, _ in md_変わる:  # 作った md を 9_履歴 へ外し、移した元（写しから戻した md は実の写しの名）を同じ名へ戻す
-        写し = 戻した_md.get(m) or f"9_履歴/消す_{消す日}_{今の名(m).replace('/', '_')}"
-        戻す.append({"する": "file を移す", "前": 今の名(m), "後": f"9_履歴/寄せた後_{消す日}_{今の名(m).replace('/', '_')}"})
+        写し = 戻した_md.get(m) or f"{履歴の名}/消す_{消す日}_{今の名(m).replace('/', '_')}"
+        戻す.append({"する": "file を移す", "前": 今の名(m), "後": f"{履歴の名}/寄せた後_{消す日}_{今の名(m).replace('/', '_')}"})
         戻す.append({"する": "file を移す", "前": 写し, "後": 今の名(m)})
     for nf, nt in sorted(足した, reverse=True):
         if not any(今の名(f) == nf and nt in tabs for f, tabs in 前.シート.items()):
@@ -1898,7 +1908,7 @@ def 書かない物(前: 物, 後: 物, 今の名, タブの前の名: dict, 足
             n = max(len(rows) - 1, 0)
             if t.startswith(旧の頭):
                 なぜ = "旧_ のタブ（書かない。消す問い・寄せられない物で扱う）"
-            elif nt in 入口が書くタブ and nf.startswith("台帳_"):
+            elif nt in 入口が書くタブ and nf.startswith(台帳の頭):
                 なぜ = ("入口が書く物（台帳の表 A・B）。寄せは形をそろえるだけで、入れた値が今の形のままなら書かない"
                        "（入れた値＝Drive に在る値と見る）。Drive に無い勤怠を置くのは入口の口（寄せの入力に入れても書かない）")
             else:
@@ -2117,7 +2127,7 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     return 結果
 
 
-写しの頭 = "9_履歴/消す_"
+写しの頭 = f"{履歴の名}/消す_"
 
 
 def 写した名(書く: list[dict]) -> list[str]:
@@ -2126,7 +2136,7 @@ def 写した名(書く: list[dict]) -> list[str]:
             if s["する"] in ("file を写す", "file を移す") and str(s.get("先") or s.get("後") or "").startswith(写しの頭)]
 
 
-写しの名 = re.compile(r"9_履歴/消す_(\d{4}-\d{2}-\d{2})_(.+)")
+写しの名 = re.compile(re.escape(履歴の名) + r"/消す_(\d{4}-\d{2}-\d{2})_(.+)")
 
 
 def 写しの場所を読む(会社: dict) -> list[str]:

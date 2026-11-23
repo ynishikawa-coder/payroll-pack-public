@@ -34,7 +34,8 @@ def 名を引く(fid):
 def 口(**kw):
     base = dict(名の頭たち=場所.名の頭たち(根), 名を引く=名を引く, 見出しを引く=lambda sid, tab: 見出し, 印="作り物の印",
                 置き換える命令=("作り物_upload.py",), 確認ページの形=場所.確認ページの名の形(根),
-                守るタブ=場所.守るタブたち(根), 字=場所.字の口(根))
+                守るタブ=場所.守るタブたち(根), 字=場所.字の口(根), 管理表の名=場所.管理表の名(根),
+                確認ページの頭たち=場所.確認ページの頭たち(根))
     base.update(kw)
     return W.口(**base)
 
@@ -83,7 +84,7 @@ def test_窓の仕事の書き込みは通す():
 
 
 def test_確認ページは名の形と置き場をパックの1か所から読んで照らす():
-    assert 場所.確認ページの名の形(根)[1] == {"<会社>": "8_確認事項", "事務所": "00_事務所"}
+    assert 場所.確認ページの名の形(根)[1] == {"会社": "8_確認事項", "事務所": "00_事務所"}
     良い = "確認事項_作り物の会社_2099.01支給（1月分）_v1.html"
     assert j("d__create_file", name=良い, parents=["f8"]) is None
     assert j("d__create_file", name="確認事項_作り物の会社_2099.01支給（1月分）.html", parents=["f8"])   # 版が無い
@@ -109,8 +110,8 @@ def test_事務所全体の確認ページは事務所のフォルダにだけ_�
     assert j("d__create_file", name=会社の, parents=["f9"])
     # 置き場の名たち の形が分からない時は見分けられない＝止める
     形 = 場所.確認ページの名の形(根)[0]
-    assert W.判定("d__create_file", {"name": 事務所の, "parents": ["f0"]}, 口(確認ページの形=(形, {"<会社>": "8_確認事項"})))
-    assert W.判定("d__create_file", {"name": 事務所の, "parents": ["f0"]}, 口(確認ページの形=(形.replace("?P<組>", ""), {"<会社>": "8_確認事項", "事務所": "00_事務所"})))
+    assert W.判定("d__create_file", {"name": 事務所の, "parents": ["f0"]}, 口(確認ページの形=(形, {"会社": "8_確認事項"})))
+    assert W.判定("d__create_file", {"name": 事務所の, "parents": ["f0"]}, 口(確認ページの形=(形.replace("?P<組>", ""), {"会社": "8_確認事項", "事務所": "00_事務所"})))
 
 
 def test_置き場の名たちの無い前の版のパックは置き場の名を両方に使う_形の違う物は読まない(tmp_path):
@@ -118,9 +119,14 @@ def test_置き場の名たちの無い前の版のパックは置き場の名�
     (pack / "確認ページ").mkdir(parents=True)
     f = pack / "確認ページ" / "確認ページ.py"
     f.write_text("import re\n名の形 = re.compile(r'確認事項_(?P<組>[^_]+)_x\\.html')\n置き場の名 = '8_確認事項'\n", encoding="utf-8")
-    assert 場所.確認ページの名の形(pack)[1] == {"<会社>": "8_確認事項", "事務所": "8_確認事項"}
+    assert 場所.確認ページの名の形(pack)[1] == {"会社": "8_確認事項", "事務所": "8_確認事項"}
     f.write_text(f.read_text(encoding="utf-8") + "置き場の名たち = ('8_確認事項', '00_事務所')\n", encoding="utf-8")
     assert 場所.確認ページの名の形(pack) is None
+    # 置き場の名たち の鍵とパックの会社の根の印が食い違う版も読まない（印の字は道具に写さずパックから読む）
+    f.write_text(f.read_text(encoding="utf-8") + "置き場の名たち = {'<甲>': '8_確認事項', '事務所': '00_事務所'}\n会社の印 = '<乙>'\n", encoding="utf-8")
+    assert 場所.確認ページの名の形(pack) is None
+    f.write_text(f.read_text(encoding="utf-8") + "会社の印 = '<甲>'\n", encoding="utf-8")
+    assert 場所.確認ページの名の形(pack)[1] == {"会社": "8_確認事項", "事務所": "00_事務所"}
 
 
 def test_名の頭はパックの出口の出す物の置き場から読み_全部の物を含む():
@@ -219,7 +225,7 @@ def test_hookは確認ページの名の形が読めないパックでは確認�
     """注入: パックの写しの 確認ページ/確認ページ.py を読めない物にし、PAYROLL_PACK_DIR をそこへ向ける。"""
     import shutil
     pack = tmp_path / "pack"
-    for d in ("出口", "芯"):
+    for d in ("出口", "芯", "初期設定"):   # 名と版は Drive の木と名の正本（初期設定/型.json）を読む
         shutil.copytree(根 / d, pack / d, ignore=shutil.ignore_patterns("__pycache__"))
     (pack / "確認ページ").mkdir()
     (pack / "確認ページ" / "確認ページ.py").write_text("raise RuntimeError('壊れた版')\n", encoding="utf-8")

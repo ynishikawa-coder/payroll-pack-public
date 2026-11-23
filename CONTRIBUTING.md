@@ -7,6 +7,7 @@ payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sh
 - 枝・1 枝 = 1 PR = 1 窓・PR の型は土台 §1 のとおり。PR の本文はこの repo の `.github/pull_request_template.md` の型で書く。
 - どちらのアカウントの窓も、この repo へ直に枝を push し PR を出す（fork しない）。
 - PR 本文の頭の `検証した base の先端:` に、検証（試験・他の PR とのぶつかり）を行った時の base の先端の commit を書く。base が進んだら検証し直して書き直す（CI の「検証の鮮度」〔`.github/workflows/verify-base.yml`〕が違いを PR のチェックの表示で知らせる・止めない）。
+- 枝へ `git merge origin/main` で main を取り込んだら、`python3 scripts/取り込みの照らし.py` を回す（取り込みの commit が片側の行を黙って落としていないか。積んだ枝の base が squash で入った後は特に。CI も試験で同じ範囲を照らし、赤なら落ちる）。わざと捨てた行は、その file を取り込みの commit の文に `取り込みで捨てた行: <path>` と書く（取り込みの commit を書き直せない時は後の commit の文に）。
 
 ## 2. レビューと main へ入れる
 - レビューは書いた窓と別の窓がし、判定の形は土台の skill `review-pr`（`plugins/checker/skills/review-pr`）に従う。

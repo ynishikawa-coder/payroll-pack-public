@@ -7,6 +7,7 @@
 - 合流の後に直す時も、その file を直す（版を出すまでは断片のまま）。
 - `CHANGELOG.md` の「未リリース」は決まった 1 行だけ（文の正本は `scripts/changelog.py` の `UNRELEASED_TEXT`）。行を足すと赤。
 - 版を出す PR だけが `python3 scripts/changelog.py 版 vX.Y.Z YYYY-MM-DD` で断片を束ね（main に入った順・新しい物が上）、`CHANGELOG.md` に版の節を作り、断片を消す。版の節の形・印の打ち方（`tag.yml`）は今までと同じ。
+- 版を出す PR は、束ねる前に `git merge origin/main` で今の main の断片を全部取り込む。枝を切った後に main へ入った断片が節に入らず残れば `check` が赤（`取り残し`・並びは origin/main の first-parent で比べる。照らせない手元〔浅い clone・origin/main が無い〕では照らさない）。赤なら main を取り込み、束ね直す。
 - 断片が 1 つでも在る中身は版の印の中身でない（`出口/証明.py` の `パックの版` が `+未リリース` を付ける）。
 - 形は `python3 scripts/changelog.py check` が照らす（終わりの値 0 緑・1 赤・2 道具が働けない＝結果ではない）（`tests/test_骨.py` が回す）。未リリースの行の全部は `python3 scripts/changelog.py` で読む。
 
@@ -20,6 +21,8 @@ git show HEAD:CHANGELOG.md | python3 scripts/changelog.py adopt - CHANGELOG.d/<�
 git checkout origin/main -- CHANGELOG.md
 python3 scripts/changelog.py check
 ```
+
+取り込みの commit を作ったら `python3 scripts/取り込みの照らし.py` で、ほかの file の行を黙って落としていないかも照らす（`CONTRIBUTING.md` §1）。
 
 - `adopt` は移した行を 1 行ずつ出す。自分の行の数と合うかを見る（0 行なら、自分の行が既に main の断片に在るか、取り込む先が違う）。
 - 断片の名: 枝が `claude/<YYYYMMDD>-<話題>` なら `<YYYYMMDD>-<話題>.txt`。名に日付の無い枝（人の枝・前からの枝）は、取り込む日の日付と枝の名の最後の `/` の後を `-` でつないだ名にする（例 枝 `claude/作り物の話題` を 2099-01-02 に取り込むなら `20990102-作り物の話題.txt`。空白は `-` に替える）。

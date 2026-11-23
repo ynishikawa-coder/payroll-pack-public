@@ -24,7 +24,7 @@ _sp = _imp.spec_from_file_location("初期設定_段の解決_書き方", _Path(
 段 = _imp.module_from_spec(_sp)
 _sp.loader.exec_module(段)
 
-照らすファイルの頭 = ("2_マスタ", "台帳")   # 見回り.書き方を見る と同じ
+照らすファイルの頭 = (当.マスタの名, "台帳")   # 見回り.書き方を見る と同じ
 種類 = "書き方の合わない値"
 
 

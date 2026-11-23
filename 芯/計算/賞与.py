@@ -18,7 +18,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import ROUND_FLOOR, Decimal
 
-from .形 import 区分だけか, 形の誤り, 数, 理由
+from .形 import 区分だけか, 形の誤り, 数, 理由, 日付
 from .支給控除 import 一人, 式が無い, 月額表の税額, 社保の項目
 
 社保の計 = 社保の項目 + ("雇用保険",)
@@ -52,7 +52,7 @@ class 賞与の一人(一人):
             a = Decimal(0)
         self.帳.置く("賞与", a, f"賞与:{self.原本 or '原本の名前なし'}")
         退 = v.get("人.退職日")
-        if 退 and date.fromisoformat(str(退)) < self.支給日 and a:
+        if 退 and 日付(退, "人.退職日") < self.支給日 and a:
             self._仮("全部", 理由(f"退職日 {退} より後の賞与の支払い", "", "在職の人として計算した", "源泉の欄・社保を確かめる"))
 
         # 標準賞与額（健保は年度の累計・厚年は 1 か月の上限）
@@ -181,8 +181,8 @@ def _期間が境を超える(期間, 境: int) -> bool | None:
         if len(期間) != 2:
             return None
         try:
-            始め, 終わり = (x if isinstance(x, date) else date.fromisoformat(str(x)) for x in 期間)
-        except (TypeError, ValueError):
+            始め, 終わり = (x if isinstance(x, date) else 日付(x, "賞与の計算期間") for x in 期間)
+        except (TypeError, 形の誤り):
             return None
         if 終わり < 始め:
             return None

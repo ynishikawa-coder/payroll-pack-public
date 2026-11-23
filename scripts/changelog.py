@@ -70,6 +70,48 @@ def check(root: Path = ROOT) -> list[str]:
         for n, line in enumerate(lines, 1):
             if not re.match(r"^- \S", line):
                 errs.append(f"{DIR_NAME}/{p.name}:{n}: 1 項を 1 行で `- ` から書く（続きの行・見出し・空白で始まる行は書かない）")
+    errs += 取り残し(root) or []
+    return errs
+
+
+def 取り残し(root: Path = ROOT, base: str = "origin/main") -> list[str] | None:
+    """一番新しい版の節より前に main（base の first-parent の並び）へ入った断片が、節に入らず残っていれば誤りを返す。
+    照らせない（git でない・履歴が浅い・base が無い）なら None（照らしたとは言わない＝呼ぶ側が試験で赤か skip にする）。
+    main の同じ commit で入った節と断片（履歴を 1 つに畳んだ公開の写し）は並びが分からないので赤にしない。
+
+    版を出す PR は枝を切った時の断片だけを束ねる。その後に main へ入った断片は、合流すると断片のまま残り、版の節に
+    入らない（v0.39.0 の版を出す PR のレビュー・原因の台帳）。断片と節の見出しが main へ入った commit を main の並びで比べ、
+    節より新しい断片だけを通す（次の版の物）。main にまだ無い物（今の枝で足した物）は一番新しい側に置く＝合流した時の並び。
+    並びは今の枝でなく main で取る: 枝の側の並びで見ると、版の枝へ main を取り込んだ時は main の断片が枝の取り込みの
+    commit で足された事になり見逃し、ふつうの枝へ版の後の main を取り込んだ時は自分の断片が節より古く見えて誤って赤にする。"""
+    if _git(root, "rev-parse", "--is-inside-work-tree").returncode != 0:
+        return None
+    if _git(root, "rev-parse", "--is-shallow-repository").stdout.strip() != "false":
+        return None
+    if _git(root, "rev-parse", "--verify", "-q", f"{base}^{{commit}}").returncode != 0:
+        return None
+    main = root / "CHANGELOG.md"
+    m = next((VERSION_HEAD_RE.match(l) for l in main.read_text(encoding="utf-8").splitlines() if VERSION_HEAD_RE.match(l)), None) \
+        if main.is_file() else None
+    if m is None:
+        return []
+    並び = {sha: i for i, sha in enumerate(_git(root, "rev-list", "--first-parent", base).stdout.split())}
+
+    def 位置(*args: str) -> int:
+        """その変更を main へ入れた commit の位置（0 が一番新しい）。main に無ければ -1（一番新しい側＝合流した時の並び）。"""
+        shas = [s for s in _git(root, "log", "--first-parent", "--diff-merges=first-parent", "--format=%H", base, *args).stdout.split()
+                if s in 並び]
+        return 並び[shas[-1]] if shas else -1
+
+    見出し = m.group(0)
+    節 = 位置("-S", 見出し, "--", "CHANGELOG.md") if 見出し in _git(root, "show", f"{base}:CHANGELOG.md").stdout.splitlines() else -1
+    errs = []
+    for p in fragments(root):
+        rel = str(p.relative_to(root))
+        断 = 位置("--diff-filter=A", "-1", "--", rel) if _git(root, "cat-file", "-e", f"{base}:{rel}").returncode == 0 else -1
+        if 断 > 節 or 断 == 節 == -1:  # main の同じ commit で入った節と断片は並びが分からない（1 つに畳んだ写し）＝赤にしない
+            errs.append(f"{DIR_NAME}/{p.name}: 版 {m.group(1)} の節より前に main へ入った断片が、節に入らず残る（版を出す枝を切った後に"
+                        f"入った断片。main を取り込み、この断片の行を版の節へ移して断片を消す）")
     return errs
 
 

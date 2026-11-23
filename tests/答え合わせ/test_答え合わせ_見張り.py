@@ -51,7 +51,7 @@ def test_明細を縦へ():
 
 def test_差の表():
     答え = list(_一覧表().行たち) + list(_明細().行たち)
-    r = 段.照らす(作.芯の行, 答え, 作.つなぎ)
+    r = 段.照らす(作.芯の行, 答え, 作.つなぎ, 人の状態={})
     差 = [x for x in r.差の表 if x[6] != "0"]
     assert 差 == [
         ("支給月", "会社", "NO", "項目", "こちら", "給与ソフト", "差", "差の見立て", "差の出所"),
@@ -79,12 +79,12 @@ def test_差0の月を続けて数える():
         for no, v in (("0001", 200000), ("0002", 180000)):
             芯.append(作.R(no, "基本給", v, 月_=m))
             答え.append(dict(支給月=m, 会社=作.会社, NO=no, 項目="基本給", 値=v, 状態="確定", 出所="作り物の答え"))
-    r = 段.照らす(芯[:4], 答え[:4], 作.つなぎ)
+    r = 段.照らす(芯[:4], 答え[:4], 作.つなぎ, 人の状態={})
     assert r.差の行の数 == 0 and r.差0の月数["9"]["月数"] == 2
-    r2 = 段.照らす(芯[4:], 答え[4:], 作.つなぎ, 前の記録=r.月の記録)
+    r2 = 段.照らす(芯[4:], 答え[4:], 作.つなぎ, 人の状態={}, 前の記録=r.月の記録)
     assert r2.差0の月数["9"]["数えた月"] == ("2026-08", "2026-09", "2026-10")
     # 答えが違うで閉じた問いのある月は差 0 に数えない
-    r3 = 段.照らす(芯, 答え, 作.つなぎ, 給与ソフトが違うで閉じた={("9", "2026-09"): 1})
+    r3 = 段.照らす(芯, 答え, 作.つなぎ, 人の状態={}, 給与ソフトが違うで閉じた={("9", "2026-09"): 1})
     assert r3.差0の月数["9"]["数えた月"] == ("2026-10",)
 
 
@@ -116,7 +116,7 @@ def test_呼び口(tmp_path):
     (tmp_path / "横.csv").write_bytes(作.一覧表_横.encode("cp932"))
     (tmp_path / "つなぎ.json").write_text(json.dumps({"欄": 作.つなぎ, "読まない見出し": list(作.読まない見出し)}), encoding="utf-8")
     芯 = [dict(r, 値=str(r["値"])) for r in 作.芯の行 if r["NO"] in ("0001",)]
-    (tmp_path / "芯.json").write_text(json.dumps({"行": 芯}, ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "芯.json").write_text(json.dumps({"行": 芯, "人の状態": []}, ensure_ascii=False), encoding="utf-8")
     assert main(["読む", "--形", "一覧表", "--会社", "9", "--支給月", 作.月, "--つなぎ", str(tmp_path / "つなぎ.json"),
                  "--時間の書き方", "60進", "--文字コード", "cp932", "--出す", str(tmp_path / "答え.json"),
                  str(tmp_path / "横.csv")]) == 0
@@ -128,3 +128,29 @@ def test_呼び口(tmp_path):
     差 = json.loads((tmp_path / "差.json").read_text(encoding="utf-8"))
     assert 差["差の行の数"] == 0 and len(差["差の表"]) == 5
     assert 差["照らさなかった月"] == [{"支給月": "2026-09", "会社": "9"}]
+
+
+def test_注入_人の状態を渡さなければ照らさず止める():
+    """前: 人の状態 を渡し忘れると {} と読み、仮の人を確定として照らした（`出口.関所.通す` と同じく止める）。"""
+    import pytest
+    答え = list(_一覧表().行たち)
+    with pytest.raises(TypeError):
+        段.照らす(作.芯の行, 答え, 作.つなぎ)
+    for 値 in (None, [], "仮"):
+        with pytest.raises(TypeError, match="人の状態"):
+            段.照らす(作.芯の行, 答え, 作.つなぎ, 人の状態=値)
+
+
+def test_注入_呼び口は芯のJSONに人の状態が無ければ止める(tmp_path):
+    import pytest
+    (tmp_path / "つなぎ.json").write_text(json.dumps({"欄": 作.つなぎ}), encoding="utf-8")
+    (tmp_path / "答え.json").write_text(json.dumps({"行": []}), encoding="utf-8")
+    引数 = ["照らす", "--芯", str(tmp_path / "芯.json"), "--答え", str(tmp_path / "答え.json"),
+          "--つなぎ", str(tmp_path / "つなぎ.json"), "--出す", str(tmp_path / "差.json")]
+    for 芯 in ([], {"行": []}):          # 前: 行の並びだけ・人の状態の無い JSON を「状態の無い人＝確定」と読んだ
+        (tmp_path / "芯.json").write_text(json.dumps(芯), encoding="utf-8")
+        with pytest.raises(ValueError, match="人の状態"):
+            main(引数)
+        assert not (tmp_path / "差.json").exists()
+    (tmp_path / "芯.json").write_text(json.dumps({"行": [], "人の状態": []}), encoding="utf-8")
+    assert main(引数) == 0

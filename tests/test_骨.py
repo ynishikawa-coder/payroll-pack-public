@@ -194,11 +194,14 @@ def _main_からの変更() -> list[str] | None:
     return None
 
 
+手元に無い_の頭 = "git の履歴・印が手元に無い: "   # tests/conftest.py の許しの表がこの頭 1 つで許す（呼ぶ所ごとに行を足さない）
+
+
 def _手元に無い(なぜ: str):
     """git の履歴・印が手元に無い時。手元（浅い clone など）は skip、CI（GITHUB_ACTIONS）では赤＝CI では必ず回す。"""
     if os.environ.get("GITHUB_ACTIONS") == "true":
         pytest.fail(f"{なぜ}（CI の checkout は fetch-depth: 0 で履歴と印を全部取る＝.github/workflows/ci.yml）")
-    pytest.skip(f"{なぜ}（浅い clone など。git fetch --unshallow --tags origin で回る）")
+    pytest.skip(f"{手元に無い_の頭}{なぜ}（浅い clone など。git fetch --unshallow --tags origin で回る）")
 
 
 def test_呼び口を変えた枝は_changelog_に行を足す():
@@ -298,12 +301,107 @@ def test_古い形の行を断片へ移す_取り込みでぶつかった途中�
     assert 記録.adopt(自分の, 先, d, base="main") == ["- 乙（自分の行）"]  # main に在る 甲 は移さない・自分の 乙 は移す
     _g(d, "checkout", "main", "--", "CHANGELOG.md")
     assert 記録.check(d) == [] and 先.read_text(encoding="utf-8") == "- 乙（自分の行）\n"
+
     # 取り込む先が読めない時・断片にぶつかった印が残る時は止める（黙って 0 行で進まない）
     with pytest.raises(SystemExit):
         記録.adopt(自分の, d / "CHANGELOG.d" / "20990102-b.txt", d, base="無い枝")
     先.write_text("<<<<<<< HEAD\n- x\n=======\n- y\n>>>>>>> main\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         記録.adopt(自分の, d / "CHANGELOG.d" / "20990102-b.txt", d, base="main")
+
+
+# 版を出す枝を切った後に main へ入った断片が、合流で断片のまま残り版の節から落ちる（v0.39.0 の版を出す PR のレビュー・原因の台帳）。
+# 並びは main で比べる（枝の側で見ると、版の枝へ main を取り込んだ形を見逃し、ふつうの枝へ版の後の main を取り込んだ形を赤にする）。
+def _版の並びの置き場(tmp_path: Path) -> Path:
+    d = tmp_path / "r"
+    d.mkdir()
+    _g(d, "init", "-q", "-b", "main")
+    (d / "CHANGELOG.d").mkdir()
+    (d / "CHANGELOG.d" / "README.md").write_text("書き方", encoding="utf-8")
+    (d / "CHANGELOG.md").write_text(
+        f"# C\n\n## 未リリース\n{記録.UNRELEASED_TEXT}\n\n## [v0.1.0] - 2099-01-01\n- 初め\n", encoding="utf-8")
+    _g(d, "add", "-A"); _g(d, "commit", "-qm", "初め")
+    (d / "CHANGELOG.d" / "20990102-mae.txt").write_text("- 版の前の直し\n", encoding="utf-8")
+    _g(d, "add", "-A"); _g(d, "commit", "-qm", "版の前の直し")
+    return d
+
+
+def _断片を足す(d: Path, 名: str, 行: str) -> None:
+    (d / "CHANGELOG.d" / 名).write_text(行 + "\n", encoding="utf-8")
+    _g(d, "add", "-A"); _g(d, "commit", "-qm", 名)
+
+
+def _枝を_main_へ寄せる(d: Path, 枝: str) -> None:
+    """枝を 1 つの commit にして main へ入れる（GitHub の squash の合流と同じ形）。"""
+    _g(d, "checkout", "-q", "main")
+    assert _g(d, "merge", "-q", "--squash", 枝).returncode == 0
+    _g(d, "commit", "-qm", f"{枝} を寄せた")
+
+
+def test_版の枝を切った後に入った断片が節から落ちると赤(tmp_path):
+    d = _版の並びの置き場(tmp_path)
+    _g(d, "checkout", "-qb", "claude/20990103-ban")
+    記録.release("v0.2.0", "2099-01-03", d)
+    _g(d, "commit", "-qam", "版 v0.2.0")
+    _g(d, "checkout", "-q", "main")
+    _断片を足す(d, "20990103-ato.txt", "- 枝を切った後の直し")  # 版の枝を切った後に main へ入った
+    _g(d, "checkout", "-q", "claude/20990103-ban")
+    assert 記録.取り残し(d, base="main") == []  # 取り込む前は断片が手元に無い（合流の時に落ちる）
+    assert _g(d, "merge", "-q", "--no-edit", "main").returncode == 0  # 版の枝へ main を取り込んだ（ぶつからない）
+    assert [e.split(":")[0] for e in 記録.取り残し(d, base="main")] == ["CHANGELOG.d/20990103-ato.txt"]
+    assert 記録.取り残し(d, base="origin/main") is None  # base が無ければ照らしたと言わない
+    _枝を_main_へ寄せる(d, "claude/20990103-ban")  # そのまま合流した main も赤（版の印は main の CI の緑の後だけ）
+    assert [e.split(":")[0] for e in 記録.取り残し(d, base="main")] == ["CHANGELOG.d/20990103-ato.txt"]
+
+
+def test_版の節を今の_main_から束ね直せば緑(tmp_path):
+    d = _版の並びの置き場(tmp_path)
+    _g(d, "checkout", "-qb", "claude/20990103-ban")
+    _g(d, "checkout", "-q", "main")
+    _断片を足す(d, "20990103-ato.txt", "- 枝を切った後の直し")
+    _g(d, "checkout", "-q", "claude/20990103-ban")
+    assert _g(d, "merge", "-q", "--no-edit", "main").returncode == 0  # 先に main を取り込んでから束ねる
+    記録.release("v0.2.0", "2099-01-03", d)
+    _g(d, "commit", "-qam", "版 v0.2.0")
+    assert 記録.取り残し(d, base="main") == []
+    _枝を_main_へ寄せる(d, "claude/20990103-ban")
+    assert 記録.取り残し(d, base="main") == []
+    _断片を足す(d, "20990104-tsugi.txt", "- 次の版の直し")  # 版の後に main へ入った断片は次の版の物＝緑
+    assert 記録.取り残し(d, base="main") == []
+
+
+def test_版の前に切ったふつうの枝が版の後の_main_を取り込んでも赤にしない(tmp_path):
+    d = _版の並びの置き場(tmp_path)
+    _g(d, "checkout", "-qb", "claude/20990103-futsuu")
+    _断片を足す(d, "20990103-futsuu.txt", "- ふつうの直し")  # 版の前に切った枝の断片
+    _g(d, "checkout", "-q", "main")
+    記録.release("v0.2.0", "2099-01-03", d)
+    _g(d, "commit", "-qam", "版 v0.2.0")
+    _g(d, "checkout", "-q", "claude/20990103-futsuu")
+    assert _g(d, "merge", "-q", "--no-edit", "main").returncode == 0
+    assert 記録.取り残し(d, base="main") == []  # 自分の断片は main にまだ無い＝合流すると節より新しい
+    _枝を_main_へ寄せる(d, "claude/20990103-futsuu")
+    assert 記録.取り残し(d, base="main") == []
+
+
+def test_版の節と同じ時に足した断片も赤(tmp_path):
+    d = _版の並びの置き場(tmp_path)
+    _g(d, "checkout", "-qb", "claude/20990103-ban")
+    記録.release("v0.2.0", "2099-01-03", d)
+    (d / "CHANGELOG.d" / "20990103-ban.txt").write_text("- 版の枝で足した直し\n", encoding="utf-8")  # 束ねた後に足した
+    assert [e.split(":")[0] for e in 記録.取り残し(d, base="main")] == ["CHANGELOG.d/20990103-ban.txt"]
+    _g(d, "add", "-A"); _g(d, "commit", "-qm", "版 v0.2.0 と断片")
+    _枝を_main_へ寄せる(d, "claude/20990103-ban")  # main の同じ commit で入った節と断片は並びが分からない（1 つに畳んだ写し）＝赤にしない
+    assert 記録.取り残し(d, base="main") == []
+
+
+def test_この_repo_の断片は一番新しい版の節より後に入った物だけ():
+    赤 = 記録.取り残し(根)
+    if 赤 is None:  # 公開の写しは main だけを持つ（_main_からの変更 と同じ順）
+        赤 = 記録.取り残し(根, base="main")
+    if 赤 is None:
+        _手元に無い("git の履歴か origin/main が手元に無い（版の節と断片の並びを照らせない）")
+    assert 赤 == []
 
 
 _AI_の枝 = re.compile(r"^claude/(\d{8}-.+)$")

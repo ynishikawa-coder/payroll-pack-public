@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from fractions import Fraction
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -34,6 +35,43 @@ def 数(v, 名: str = "値") -> Decimal | None:
         return Decimal(str(v).strip().replace(",", ""))
     except InvalidOperation:
         raise 形の誤り(f"{名} が数でない: {v!r}") from None
+
+
+def 名の数(d, 名: str) -> tuple[Decimal | None, str]:
+    """d（dict）の 名 の数を、名が無い と 名は在るのに値が足りない に分けて読む（空と無しを分ける 1 か所）。
+
+    - 名が無い（d が dict でない時も）＝(None, "")＝足りない値ではない（呼ぶ側の既定＝例 0 で確定してよい）。
+    - 名は在るのに 空・数でない・負＝(None, 訳)＝足りない値。呼ぶ側は見当で計算して仮にする
+      （⟦鍵:給与計算/足りない時は仮で計算し出さない⟧。`数(..) or 0` で空を黙って 0 に読まない）。
+    - 読めた＝(数, "")。
+    殻（段の解決）は空のセルを渡さないので、名が在って空なのは渡し方が崩れた時だけ。"""
+    if not isinstance(d, dict) or 名 not in d:
+        return None, ""
+    x = d[名]
+    try:
+        n = 数(x, 名)
+    except 形の誤り:
+        return None, f"数でない（{x!r}）"
+    if n is None:
+        return None, f"空（{x!r}）"
+    if n < 0:
+        return None, f"負（{x!r}）"
+    return n, ""
+
+
+def 日付(v, 名: str = "値") -> date | None:
+    """date か YYYY-MM-DD の字を date に。None と "" だけ None。読めない字は 形の誤り（素の ValueError で月を止めず、
+    計算する の口でその人だけ値なしの仮＋問いにする 1 か所）。芯/計算 で日付の字を読む所はここを通す。
+    空白だけの字も 形の誤り（真の字なのに None を返すと、`if 字 and 日付(字) < x` の呼ぶ側が None と比べて素の例外で月を止める）。
+    偽の値（None・""）だけを「無し」とするので、呼ぶ側の `if 字` と食い違わない。"""
+    if v is None or v == "":
+        return None
+    if isinstance(v, date):
+        return v
+    try:
+        return date.fromisoformat(str(v).strip())
+    except ValueError:
+        raise 形の誤り(f"{名}「{v}」が日付（YYYY-MM-DD）でない") from None
 
 
 def 時間(v, 名: str = "値") -> Fraction | None:

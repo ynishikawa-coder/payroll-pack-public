@@ -290,3 +290,36 @@ def test_決まりが読めなくても起動を止めない(tmp_path, monkeypat
     (tmp_path / "大きい.md").write_text("あ" * 2000, encoding="utf-8")  # 6000 バイト
     monkeypatch.setattr(m, "決まり", tmp_path / "大きい.md")
     assert m.check() == 1
+
+
+def _計算の元の名を写した所(根の道) -> list[str]:
+    """文書で `計算の元に要る名` の後に計算の元の名を並べて写した所（正本は 出口/証明.py の 1 か所・写しは古くなる）。"""
+    sys.path.insert(0, str(根))
+    from 出口 import 証明
+    名たち = sorted({k for 回 in 証明.回たち for k in 証明.計算の元に要る名(回)} | {"人ごとの月の数字"}, key=len, reverse=True)
+    外 = []
+    for p in sorted(Path(根の道).rglob("*.md")):
+        for i, 行 in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            for m in re.finditer(r"計算の元に要る名", 行):
+                区 = re.split(r"[）|]", 行[m.end():], maxsplit=1)[0]
+                区 = re.sub(r"「[^」]*」", "", 区)   # 「…」は名を挙げて否む所（例 年の台帳「人ごとの月の数字」は結ばない）
+                見た = []
+                for 名 in 名たち:
+                    if 名 in 区:
+                        見た.append(名)
+                        区 = 区.replace(名, "")
+                if len(見た) >= 2:
+                    外.append(f"{p.relative_to(根の道)}:{i} {見た}")
+    return 外
+
+
+def test_計算の元の名を文書へ写さない():
+    外 = [*_計算の元の名を写した所(根 / "plugins"), *_計算の元の名を写した所(根 / "docs")]
+    assert not 外, 外
+
+
+def test_計算の元の名の写しを見つけられる(tmp_path):
+    (tmp_path / "a.md").write_text("名は `計算の元に要る名`＝マスタ・確定した勤怠・人ごとの月の数字）\n", encoding="utf-8")
+    (tmp_path / "b.md").write_text("名は `計算の元に要る名(回)` を読む。年の台帳「人ごとの月の数字」は結ばない）\n", encoding="utf-8")
+    外 = _計算の元の名を写した所(tmp_path)
+    assert len(外) == 1 and 外[0].startswith("a.md:1")

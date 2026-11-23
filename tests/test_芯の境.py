@@ -31,6 +31,11 @@ def _許す(名: str) -> bool:
 
 def 外へのimport(根: Path) -> list[str]:
     """芯/ の .py から芯の外（標準の道具でも芯でもない物）への import を `path:行: 名` で返す。"""
+    return [f"{where}:{行}: {x}" for where, 行, x in 読んだimport(根) if not _許す(x)]
+
+
+def 読んだimport(根: Path) -> list[tuple[str, int, str]]:
+    """芯/ の .py を構文木で読み、照らした import の全部を (path, 行, 名) で返す（許すか前）。"""
     out = []
     for p in sorted((根 / 芯の名).rglob("*.py")):
         木 = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
@@ -50,7 +55,7 @@ def 外へのimport(根: Path) -> list[str]:
                         名s = [a.value if not a.value.startswith(".") else "<相対の字>"]
                     else:
                         名s = ["<字でない import の名＝照らせない>"]
-            out += [f"{where}:{n.lineno}: {x}" for x in 名s if not _許す(x)]
+            out += [(where, n.lineno, x) for x in 名s]
     return out
 
 
@@ -58,9 +63,23 @@ def test_芯は外をimportしない():
     assert 外へのimport(根) == []
 
 
+def 芯の中へのimportの数(根: Path) -> int:
+    return sum(1 for _, _, x in 読んだimport(根) if x.split(".")[0] == 芯の名)
+
+
 def test_芯の中のimportを数えている():
-    # 照らしが空回りしていない（芯の中どうしの import を実際に読んでいる）
-    assert any(p.read_text(encoding="utf-8").find("from 芯.") >= 0 for p in (根 / 芯の名).rglob("*.py"))
+    # 照らしが空回りしていない＝照らしが実際に読んだ import に芯の中どうしの物が在る
+    # （前は file の字に「from 芯.」が在るかだけを見た＝照らしが import を読み落としても緑だった）
+    assert 芯の中へのimportの数(根) > 0
+
+
+def test_注入_字だけ在りimportが無い芯は数えない(tmp_path):
+    d = tmp_path / 芯の名
+    d.mkdir()
+    (d / "x.py").write_text('"""from 芯.計算 import 形 と書いた説明だけ"""\n# from 芯.字 import 列の字\n', encoding="utf-8")
+    assert 芯の中へのimportの数(tmp_path) == 0
+    (d / "y.py").write_text("from 芯.字 import 列の字\nfrom . import x\n", encoding="utf-8")
+    assert 芯の中へのimportの数(tmp_path) == 2
 
 
 def test_外へのimportを見つける(tmp_path):

@@ -24,15 +24,26 @@ def _回す(*file: Path) -> tuple[int, list[str]]:
     return p.returncode, p.stdout.splitlines()
 
 
-@pytest.mark.skipif(tuple(map(int, CIの版.split("."))) >= (3, 13),
-                    reason="CI の版が 3.13 以上（Unicode 15.1）なら U+30FB は名に使える字＝この作り物は赤にならない")
 def test_名に中黒を持つ関数はCIの版で読めないと赤(tmp_path):
+    # 前は CI の版が 3.13 以上なら skipif で黙って飛んだ。版を上げたら、その版で読めない作り物に替えるまで赤にする
+    if tuple(map(int, CIの版.split("."))) >= (3, 13):
+        pytest.fail(f"CI の版 {CIの版} では U+30FB は名に使える字＝この作り物は赤にならない。その版で読めない作り物に替える")
     f = tmp_path / "test_作り物の名.py"
     f.write_text(f"def test_あ{chr(0x30FB)}い():\n    pass\n", encoding="utf-8")   # 3.13 では通り 3.12 では SyntaxError
     rc, 行 = _回す(f)
     assert rc == 1, 行
     assert any(l.startswith(f"読めない: {f}:1: ") and "U+30FB" in l for l in 行), 行
     assert 行[-1].startswith(f"赤: CI の Python {CIの版} の文法で読めない .py が 1 個在る")
+
+
+def test_注入_どの版でも読めない文法は赤(tmp_path):
+    """版に頼らない注入: 壊れた文法の .py を入れると必ず赤（上の試験が版の都合で働かない時も照らしが生きているか）。"""
+    f = tmp_path / "test_作り物の壊れ.py"
+    f.write_text("def f(:\n    pass\n", encoding="utf-8")
+    rc, 行 = _回す(f)
+    assert rc == 1, 行
+    assert any(l.startswith(f"読めない: {f}:1: ") for l in 行), 行
+    assert 行[-1].startswith("赤:"), 行
 
 
 def test_読める物は通りCIの版のpythonを出す(tmp_path):

@@ -14,7 +14,9 @@ from 芯 import 設定, 支給月の字
 from . import 引く口 as 口
 
 曜日 = "月火水木金土日"
-既定の暦 = {"休みの曜日": ["土", "日"], "祝日": "休み", "会社の休み": []}
+祝日の扱い = ("休み", "出勤")   # 時間.暦 の 祝日 の選べる値（正本はここ。初期設定/段の解決.py が引いて照らす）
+シフトの語 = "勤務した日"   # 時間.暦 の {"シフト": "勤務した日"}＝勤務した日が所定の日（正本はここ）
+既定の暦 = {"休みの曜日": ["土", "日"], "祝日": 祝日の扱い[0], "会社の休み": []}
 
 
 def 月を足す(年: int, 月: int, n: int) -> tuple[int, int]:
@@ -60,7 +62,7 @@ def 祝日(年: int, 置き場=None) -> tuple[set[date], str, bool]:
 def 休みか(d: date, 暦: dict, 祝日たち: set[date]) -> bool:
     if 曜日[d.weekday()] in (暦.get("休みの曜日") or []):
         return True
-    if 暦.get("祝日", "休み") == "休み" and d in 祝日たち:
+    if 暦.get("祝日", 既定の暦["祝日"]) == 祝日の扱い[0] and d in 祝日たち:
         return True
     return d.isoformat() in {str(x) for x in 暦.get("会社の休み") or []}
 
