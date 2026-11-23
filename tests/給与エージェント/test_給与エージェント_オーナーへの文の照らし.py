@@ -57,7 +57,7 @@ def test_番号の形が読めない時は黙らずに知らせる():
 
 def test_番号の形はパックの正本と同じ():
     import importlib
-    assert 形[0] == importlib.import_module("初期設定.型の口")._問いの番号の形.pattern
+    assert 形[0] == importlib.import_module("初期設定.型の口").問いの番号の形.pattern
     assert 形[1] == r"R\d{6}-[A-Z0-9]{4}" and 形[1] in (根 / "確認ページ" / "確認ページ.py").read_text(encoding="utf-8")
 
 

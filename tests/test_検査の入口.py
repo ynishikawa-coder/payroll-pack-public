@@ -100,5 +100,22 @@ def test_土台の版が読めなければ赤(tmp_path):
     r = _作り物のrepo(tmp_path, "作り物の文\n")
     (r / ".github" / "workflows" / "土台の版.json").write_text('{"土台": "main"}', encoding="utf-8")
     rc, 行 = _入口を回す(r)
-    assert rc == 1 and 行[-1].startswith("赤: 公開の検査に当たり"), 行[-6:]
+    # 当たりの結果ではない＝働けないの 2（1 に寄せない・決定 420a40dc）
+    assert rc == 2 and 行[-1].startswith("赤: 公開の検査が働けない"), 行[-6:]
     assert any("土台の版の印が読めない" in l for l in 行)
+
+
+@pytest.mark.parametrize("子, 入口", [(1, 1), (2, 2), (3, 2), (5, 2)])
+def test_公開の検査の終わりの値は当たり1と働けない2を分ける(tmp_path, 子, 入口):
+    """注入: 呼ぶ guard.py が 2（働けない）・3（照らしていない）で抜けた回を、入口が当たり（1）と分けて 2 で抜ける。
+    決定 420a40dc。入口が guard.py の非 0 を全部 1 に寄せると、ここの 2・3・5 が 1 になって落ちる。"""
+    r = _作り物のrepo(tmp_path, "作り物の文\n")
+    偽 = tmp_path / "偽のguard.py"
+    偽.write_text(f"import sys\nprint('作り物の検査の出力')\nsys.exit({子})\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("AF_DENY_BUNDLE", "AF_DENY_WORDS", "AF_DENY_WORDS_FILE")}
+    p = subprocess.run(["bash", str(r / "scripts" / "check_all.sh")], capture_output=True, text=True, timeout=300,
+                       cwd=r, env={**env, "PAYROLL_CHECK_ALL_NESTED": "1", "PAYROLL_PUBLIC_GUARD": str(偽)})
+    行 = p.stdout.splitlines()
+    assert p.returncode == 入口, (子, 行[-6:])
+    頭 = "赤: 公開の検査に当たり" if 入口 == 1 else "赤: 公開の検査が働けない"
+    assert 行[-1].startswith(頭) and "作り物の検査の出力" in p.stdout, 行[-6:]

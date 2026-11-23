@@ -16,9 +16,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .名と版 import 出す名, 名を付ける, 履歴の置き場
-from .形 import 給与ソフトの形, 字にする, 欄の組たち, 形を組む, _数の字
+from .形 import 給与ソフトの形, 字にする, 欄の組たち, 形を組む, 数の字
 from .行 import 行, 賞与か, 支給月を確かめる
 from .関所 import 関所を通った, 通ったかを確かめる
+from 芯.字 import 列の字  # 列の字の正本（1 始まり）
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ class 出す物:
         幅 = max((len(r) for r in self.表), default=0)
         手順.append({"する": "スプレッドシートを作る", "フォルダ": d, "名": self.名.名, "タブ": self.物})
         手順.append({"する": "値を書く", "ファイル": f"{d}/{self.名.名}", "タブ": self.物,
-                   "範囲": f"A1:{_列の字(幅)}{len(self.表)}", "値": [list(r) for r in self.表], "書き方": "RAW"})
+                   "範囲": f"A1:{列の字(幅)}{len(self.表)}", "値": [list(r) for r in self.表], "書き方": "RAW"})
         if 書き方 == "RAW":
             return 手順
         if 書き方 != "USER_ENTERED":
@@ -76,14 +77,6 @@ def _型の口():
         sys.modules[名] = m
         spec.loader.exec_module(m)
     return sys.modules[名]
-
-
-def _列の字(n: int) -> str:
-    s = ""
-    while n > 0:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s or "A"
 
 
 def _NOの並び(no: str):
@@ -200,7 +193,7 @@ def 支給控除一覧(通った: 関所を通った, 会社: str, 支給月: st
             vals = [人[no][k].値 if k in 人[no] else None for no in 誰]
             if all(v is None for v in vals):
                 continue
-            書く = (lambda v: 字にする(v, 形, 時間の書き方)) if 形 else _数の字
+            書く = (lambda v: 字にする(v, 形, 時間の書き方)) if 形 else 数の字
             計 = sum((v for v in vals if v is not None), Decimal(0))
             表.append(tuple([k] + ["" if v is None else 書く(v) for v in vals] + [書く(計)]))
         out.append(出す物(物=物, 名=名を付ける(物, 会社, 支給月, 今ある名, 履歴にある名),

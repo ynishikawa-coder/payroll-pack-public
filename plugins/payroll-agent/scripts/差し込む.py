@@ -3,8 +3,8 @@
 
 使い方:
   python3 差し込む.py inject   SessionStart の hook が呼ぶ。決まり.md を窓の文脈へ差し込む。
-  python3 差し込む.py check    決まり.md が上限の内か・読めるかを照らす（0=緑 / 1=上限を越えた / 2=読めない）。
-inject は何が起きても 0 で抜ける（窓の起動を止めない）。読めない時は stderr に訳を出す。
+  python3 差し込む.py check    決まり.md が上限の内か・読めるかを照らす（0=緑 / 1=上限を越えた / 2=読めない・道具が壊れた＝結果ではない）。
+inject は何が起きても 0 で抜ける（窓の起動を止めない）。読めない・壊れた時は stderr に訳を出す。
 """
 from __future__ import annotations
 
@@ -48,11 +48,22 @@ def check() -> int:
     return 0
 
 
+def 走らせる(cmd: str) -> int:
+    """口を回す。道具そのものが壊れた時、inject は 0（窓の起動を止めない）・check は 2（1 の「上限を越えた」と混ぜない）。"""
+    if cmd not in ("inject", "check"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    try:
+        return inject() if cmd == "inject" else check()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        if cmd == "inject":
+            print(f"payroll-agent: 決まりを差し込む口が壊れた（{type(e).__name__}: {e}）＝決まりは差し込まれていない", file=sys.stderr)
+            return 0
+        print(f"✗ 道具が壊れた（決まりを差し込む口の check・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        return 2
+
+
 if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "inject":
-        sys.exit(inject())
-    if cmd == "check":
-        sys.exit(check())
-    print(__doc__, file=sys.stderr)
-    sys.exit(2)
+    sys.exit(走らせる(sys.argv[1] if len(sys.argv) > 1 else ""))

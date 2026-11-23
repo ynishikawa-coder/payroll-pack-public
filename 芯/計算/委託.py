@@ -97,7 +97,7 @@ def 実働の丸めを読む(v):
     return Decimal(m.group(1)), m.group(2)
 
 
-def _分(v) -> Decimal | None:
+def 分にする(v) -> Decimal | None:
     if v is None or str(v).strip() == "":
         return None
     s = str(v).strip()
@@ -116,7 +116,7 @@ def 境を読む(v) -> tuple[Decimal | None, str]:
     if not s or s == "無し":
         return None, "以上"
     m = _境の字.match(s)
-    return _分(m.group(1)), ("超える" if m.group(2) and m.group(2) != "以上" else "以上")
+    return 分にする(m.group(1)), ("超える" if m.group(2) and m.group(2) != "以上" else "以上")
 
 
 def 日の所定を使うか(v: dict) -> bool:
@@ -272,7 +272,7 @@ def 計算する(人) -> Decimal:
                    "日ごとの実働を丸めずに見当（前の道具は勤務の長さの丸めで日ごとに切り捨てた・丸めは委託の契約で決まる）",
                    "委託.実働の丸め を `15分切捨て` の形か `丸めない` で書く")
             for 日, w in sorted(日ごと.items()):
-                w = _分(w) or Decimal(0)
+                w = 分にする(w) or Decimal(0)
                 if 実丸:
                     w = 丸める(w, 実丸[1], 実丸[0])
                 届く = 境 is not None and (w >= 境 if 向き == "以上" else w > 境)
@@ -361,7 +361,7 @@ def みなしを読む(v) -> tuple[Decimal | None, str]:
         return Decimal(0), ""
     try:
         if ":" in s:
-            x, 訳 = _分(s), ""
+            x, 訳 = 分にする(s), ""
         else:
             x, 訳 = 数(s) * 60, "h:mm でない（時間の数として見当）"
     except (形の誤り, TypeError):
@@ -452,7 +452,7 @@ def _月の時間(v) -> tuple[Decimal | None, str]:
     if not s:
         return None, "無い"
     try:
-        x, 訳 = (_分(s), "") if ":" in s else (数(s) * 60, "h:mm でない（時間の数として見当）")
+        x, 訳 = (分にする(s), "") if ":" in s else (数(s) * 60, "h:mm でない（時間の数として見当）")
     except (形の誤り, TypeError):
         return None, "読めない"
     if x is None or x <= 0:

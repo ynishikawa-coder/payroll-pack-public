@@ -21,6 +21,7 @@ from 出口 import 突き合わせ as _突
 from 出口.形 import 欄, 対応にする
 from 出口.行 import 支給月の並び, 確定, 行たちにする
 from 出口.関所 import 通す
+from 初期設定 import 型の口 as _型
 
 
 @dataclass(frozen=True)
@@ -58,8 +59,13 @@ def 答えのつなぎ(つなぎ) -> tuple[欄, ...]:
     return tuple(欄(項目=x.項目, 欄=x.欄, 形=x.形, 渡す=False, 受ける=True) for x in 対応にする(つなぎ))
 
 
+def _Nの既定() -> int:
+    """N を渡さない時は項目の辞書（初期設定/項目.json の 突き合わせ.差0の月数の目安）の既定＝道具は既定の数を持たない。"""
+    return int(_型.項目("突き合わせ.差0の月数の目安")["既定"])
+
+
 def 照らす(芯の行, 答え, つなぎ, 人の状態: dict | None = None, 給与ソフトが違うで閉じた: dict | None = None,
-         場面: dict | None = None, 前の記録=(), N: int = 3, 仮の人の行=()) -> 照らした物:
+         場面: dict | None = None, 前の記録=(), N: int | None = None, 仮の人の行=()) -> 照らした物:
     """芯の計算の縦と答えの縦を照らす。
 
     芯の行: 芯/計算/ の出す人×項目の行（dict か 出口.行.行・状態つき）。仮の人は出口の関所で外れ、照らさない。
@@ -104,7 +110,7 @@ def 照らす(芯の行, 答え, つなぎ, 人の状態: dict | None = None, �
         照らさなかった月=tuple(照らさない月),
         要確認=tuple(要確認) + 結果.要確認,
         月の記録=記録,
-        差0の月数=_突.続けて差0の月数(list(前) + list(記録), N),
+        差0の月数=_突.続けて差0の月数(list(前) + list(記録), _Nの既定() if N is None else N),
         差の行の数=len(結果.差の行()),
     )
 

@@ -1434,7 +1434,7 @@ def _対象の日付(対象: str, 始め: str, 終わり: str) -> list[str]:
     字 = unicodedata.normalize("NFKC", str(対象 or ""))
     字 = re.sub(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", r"\1/\2/\3", 字)
     字 = re.sub(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", r"\1/\2", 字)
-    return _文脈の口()._答えの日付(字, 始め, 終わり)[0]
+    return _文脈の口().答えの日付(字, 始め, 終わり)[0]
 
 
 def _読んだまま答えどおり(q: dict, 台帳: dict, 会社: str, タブ: dict | None) -> bool:

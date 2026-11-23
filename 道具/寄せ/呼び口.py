@@ -7,7 +7,7 @@
   python3 道具/寄せ/呼び口.py 自己検査 --型 型.json [--前の型 前の版の型.json]
   python3 道具/寄せ/呼び口.py 質問と回答 --表 質問.json --読み替え 読み替え.json [--ファイル 00_事務所/質問と回答]
 --型 は 初期設定/型.json（同じ置き場の 項目.json・雛形/ も読む）。
-共通: [--直し <直しの dir>]（既定は 道具/寄せ/直し/）。終わりの値: 0＝書ける／緑、1＝寄せられない物が在る／赤、2＝使い方の誤り。
+共通: [--直し <直しの dir>]（既定は 道具/寄せ/直し/）。終わりの値: 0＝書ける／緑、1＝寄せられない物が在る／赤、2＝使い方の誤りか落ちた（標準出力は空・訳は標準エラー）。
 """
 import argparse
 import datetime as dt
@@ -30,6 +30,18 @@ def 読む(p):
 
 
 def main(argv=None) -> int:
+    """落ちた時（読めない入力・直しの誤り・値の保ちの誤り・思わぬ誤り）は終わりの値 2＝寄せられない物の 1 と分ける
+    （落ちた回を、標準出力が空の「寄せられない物の回」や「書く物の無い回」と読ませない）。"""
+    try:
+        return _main(argv)
+    except Exception as e:  # noqa: BLE001  落ちた訳は名指しで標準エラーへ・終わりの値は 2 の 1 つ
+        import traceback
+        traceback.print_exc()
+        print(f"呼び口が落ちた（{type(e).__name__}: {e}）＝何も返さない", file=sys.stderr)
+        return 2
+
+
+def _main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="呼び口.py")
     ap.add_argument("する", choices=["寄せる", "配る", "見回り", "自己検査", "質問と回答"])
     ap.add_argument("--会社")
@@ -52,8 +64,7 @@ def main(argv=None) -> int:
         except (ValueError, 直しの形.直しの誤り) as e:
             print(str(e), file=sys.stderr)
             return 2
-        json.dump(r, sys.stdout, ensure_ascii=False, indent=1)
-        sys.stdout.write("\n")
+        出す(r)
         return 1 if r["寄せられない物"] else 0
     if not a.型:
         ap.error("--型 が要る")
@@ -80,9 +91,15 @@ def main(argv=None) -> int:
         r = 検査.全部(型, 直したち, 当てる.型を開く(a.前の型) if a.前の型 else None)
         rc = 1 if any(r.values()) else 0
         r["判定"] = "赤" if rc else "緑"
-    json.dump(r, sys.stdout, ensure_ascii=False, indent=1)
-    sys.stdout.write("\n")
+    出す(r)
     return rc
+
+
+def 出す(r) -> None:
+    """結果を字に直し切ってから 1 度だけ標準出力へ書く（json.dump は書きながら直す＝途中で落ちると半端な JSON が
+    標準出力に残る。直し切る前に落ちれば標準出力は空のまま終わりの値 2）。"""
+    字 = json.dumps(r, ensure_ascii=False, indent=1) + "\n"
+    sys.stdout.write(字)
 
 
 if __name__ == "__main__":

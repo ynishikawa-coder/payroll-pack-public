@@ -3,7 +3,7 @@ JSON を受けて JSON を返す。Drive を開かない。
 
   読む   --形 一覧表|明細 --会社 <番号> --支給月 YYYY-MM --つなぎ つなぎ.json [--時間の書き方 60進|時:分|10進]
          [--文字コード cp932] [--氏名からNO 氏名.json] --出す 答え.json <file>...
-  照らす --芯 芯.json --答え 答え.json --つなぎ つなぎ.json [--前の記録 記録.json] [--N 3] --出す 差.json
+  照らす --芯 芯.json --答え 答え.json --つなぎ つなぎ.json [--前の記録 記録.json] [--N <数・省くと項目の辞書の既定>] --出す 差.json
   出所を見る --変更の記録 記録.json --答え 答え.json [--答えの資料 名...] [--質問と回答 問い.json] [--会社 名]
             [--事務所の質問と回答 問い.json] [--md md.json] [--台帳 台帳.json] [--照らし 差.json] [--例 例.json] --出す 出所.json
 
@@ -14,6 +14,7 @@ JSON を受けて JSON を返す。Drive を開かない。
 記録.json・問い.json: マスタ「変更の記録」・質問と回答 の行（列名の dict の並び）。
 終わりの値: 読む＝要確認 0 で 0・あれば 1／照らす＝差の行 0 かつ要確認 0 で 0・ほかは 1／
 出所を見る＝照らしで確かめていない過去の結果を出所とする値（と出所の無い値）が 0 で 0・あれば 1（毎月へ進まない）。
+どの口も、道具そのものが壊れた（読めない file・形の違う JSON・使い方の誤りなど）時は 2＝結果ではない（出す file は書かれない・毎月へ進まない）。
 過去の結果の照らし（`過去の結果 <支給月> <資料の名> <NO>:<項目> 一致`）を出所にした値は --照らし の差の表で差 0 の時だけ通す。
 """
 from __future__ import annotations
@@ -112,7 +113,7 @@ def main(argv=None) -> int:
     q.add_argument("--答え", required=True)
     q.add_argument("--つなぎ", required=True)
     q.add_argument("--前の記録")
-    q.add_argument("--N", type=int, default=3)
+    q.add_argument("--N", type=int, default=None, help="省くと 初期設定/項目.json の 突き合わせ.差0の月数の目安 の既定")
     q.add_argument("--出す", required=True)
     o = sub.add_parser("出所を見る")
     o.add_argument("--変更の記録", required=True)
@@ -131,4 +132,10 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:  # 道具そのものが壊れた＝終わりの値 2（1 の「見つかった・赤」と混ぜない）
+        import traceback
+        traceback.print_exc()
+        print(f"✗ 道具が壊れた（答え合わせの道具・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)

@@ -22,9 +22,22 @@ from pathlib import Path
 
 BIN = Path(__file__).resolve().parent.parent / "bin"
 sys.path.insert(0, str(BIN))
-import パックの場所 as 場所  # noqa: E402
-import 止める見張り as 見張り  # noqa: E402
-import オーナーへの文の照らし as オーナーへの文  # noqa: E402
+# 部品の読み込みも捕まえる（try の外で落ちると終わりの値 1＝Claude Code は止めない誤りとして道具の呼び出しを通す）。
+# 読めない部品は None にし、main が道具ごとに「止める（見る道具）・知らせる（選択肢の画面・判定そのものが読めない）」へ分ける。
+_読めない: dict[str, str] = {}
+
+
+def _部品(名: str):
+    try:
+        return __import__(名)
+    except Exception as e:  # noqa: BLE001
+        _読めない[名] = f"{type(e).__name__}: {e}"
+        return None
+
+
+場所 = _部品("パックの場所")
+見張り = _部品("止める見張り")
+オーナーへの文 = _部品("オーナーへの文の照らし")
 
 なぜ = ("給与の出す物の本と管理表の今の版は、パックの出口が作り証明を付けた表だけを、出荷の口が書く"
        "（出す前の照らしを通す）。{what}。上流（マスタ・決まりの台帳・パック）を直して出口で作り直し、出荷の口で出す")
@@ -87,20 +100,35 @@ def main(stdin=None) -> int:
         return 0
     tool = str(ev.get("tool_name", ""))
     if tool == "AskUserQuestion":   # オーナーへの選択肢の画面の文: 種類の印の無い問い・番号だけの頼み・担当者へ聞く物を知らせる（止めない）
-        パック = 場所.探す()
         try:
-            形たち = 場所.番号の形たち(パック) if パック else None
-        except Exception:  # noqa: BLE001  読めない＝番号は照らせないと知らせる（止めない）
-            形たち = None
-        args = ev.get("tool_input") or {}
-        訳 = (オーナーへの文.印を照らす(args, オーナーへの文.許す印たち())
-             + オーナーへの文.照らす(オーナーへの文.選択肢の画面の文(args), 形たち, パック is not None))
+            if 場所 is None or オーナーへの文 is None:
+                raise RuntimeError("部品を読めない: " + "・".join(f"{k}（{v}）" for k, v in _読めない.items()))
+            パック = 場所.探す()
+            try:
+                形たち = 場所.番号の形たち(パック) if パック else None
+            except Exception:  # noqa: BLE001  読めない＝番号は照らせないと知らせる（止めない）
+                形たち = None
+            args = ev.get("tool_input") or {}
+            訳 = (オーナーへの文.印を照らす(args, オーナーへの文.許す印たち())
+                 + オーナーへの文.照らす(オーナーへの文.選択肢の画面の文(args), 形たち, パック is not None))
+        except Exception as e:  # noqa: BLE001  照らしが壊れた＝この問いは照らしていないと知らせる（この口は止めない）
+            訳 = [f"給与の見張りが壊れた（オーナーへの文の照らし・{type(e).__name__}: {e}）＝この問いは照らしていない。plugin payroll-agent を直す"]
         if 訳:
             _知らせる(訳)
         return 0
+    if 見張り is None:   # 見る道具かを見分ける判定そのものが読めない＝止めずに、照らしていないと知らせる（全部の道具を止める事はオーナーの判断の行）
+        _知らせる([f"給与の見張りが壊れた（止める見張りを読めない・{_読めない.get('止める見張り', '')}）＝この道具の呼び出しは照らしていない。plugin payroll-agent を直す"])
+        print("✗ 道具が壊れた（給与の見張りの hook・止める見張りを読めない）＝照らしていない", file=sys.stderr)
+        return 0
     if not 見張り.見るか(tool):
         return 0
-    パック = 場所.探す()
+    try:
+        if 場所 is None:
+            raise RuntimeError("パックの場所を読めない: " + _読めない.get("パックの場所", ""))
+        パック = 場所.探す()
+    except Exception as e:  # noqa: BLE001  見る道具で場所を探せない＝見分けられない＝止める（下の「パックの場所が分からない」と同じ側）
+        _拒む(f"給与の見張りが壊れた（{type(e).__name__}: {e}）＝見分けられないので書く道具を止めた。plugin payroll-agent を直す")
+        return 0
     if パック is None:
         if tool == "Bash":   # 判定と同じ見分け（置き換える命令の名の直後が replace の時・分けられない文）だけ止める
             try:
@@ -120,4 +148,10 @@ def main(stdin=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:  # 捕まえ残しも 1（止めない誤り）で抜けない: 2＝Claude Code は道具の呼び出しを止め、訳を窓へ渡す
+        import traceback
+        traceback.print_exc()
+        print(f"✗ 道具が壊れた（給与の見張りの hook 見張り.py・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(2)

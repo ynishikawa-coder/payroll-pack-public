@@ -8,7 +8,7 @@
 - `CHANGELOG.md` の「未リリース」は決まった 1 行だけ（文の正本は `scripts/changelog.py` の `UNRELEASED_TEXT`）。行を足すと赤。
 - 版を出す PR だけが `python3 scripts/changelog.py 版 vX.Y.Z YYYY-MM-DD` で断片を束ね（main に入った順・新しい物が上）、`CHANGELOG.md` に版の節を作り、断片を消す。版の節の形・印の打ち方（`tag.yml`）は今までと同じ。
 - 断片が 1 つでも在る中身は版の印の中身でない（`出口/証明.py` の `パックの版` が `+未リリース` を付ける）。
-- 形は `python3 scripts/changelog.py check` が照らす（`tests/test_骨.py` が回す）。未リリースの行の全部は `python3 scripts/changelog.py` で読む。
+- 形は `python3 scripts/changelog.py check` が照らす（終わりの値 0 緑・1 赤・2 道具が働けない＝結果ではない）（`tests/test_骨.py` が回す）。未リリースの行の全部は `python3 scripts/changelog.py` で読む。
 
 ## この形の前に枝を切った PR が main を取り込む時
 

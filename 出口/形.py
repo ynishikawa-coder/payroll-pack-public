@@ -159,7 +159,8 @@ def 欄の対応を組む(会社: str, 道具: str | None = None, 支給控除�
 
 def 渡さない人を組む(会社: str, 道具: str | None, つなぎ=()) -> tuple[str, ...]:
     """⑥つなぎ の人の行（NO 有り・側＝出口・道具＝<道具>・その道具での番号＝`渡さない`）→ その給与ソフトへ入れない人の NO の並び。
-    道具を渡さなければ読まない（どの給与ソフトか分からない）。殻が手で人を外さない（どの殻も同じ物）。"""
+    道具を渡さなければ読まない（どの給与ソフトか分からない）。殻が手で人を外さない（どの殻も同じ物）。
+    印は `渡さない` の 4 字と同じ時だけ。印を含むが同じでない字（`渡さない予定` など）は止める（黙って外さない・黙って載せない）。"""
     if not 道具:
         return ()
     out = []
@@ -168,7 +169,13 @@ def 渡さない人を組む(会社: str, 道具: str | None, つなぎ=()) -> t
         if (not no or str(t.get("会社", "")).strip() != str(会社) or t.get("側") != "出口"
                 or str(t.get("道具", "")).strip() != str(道具).strip()):
             continue
-        if str(t.get("その道具での番号", "") or "").strip() == 渡さない印 and no not in out:
+        番号 = str(t.get("その道具での番号", "") or "").strip()
+        if 番号 != 渡さない印 and 渡さない印 in "".join(番号.split()):
+            # 「渡さない予定」「渡さないを解除」「渡 さない」など印に似た字は、外すか載せるかを黙って決めない＝止める
+            raise ValueError(f"⑥つなぎ の人の行（NO={no}・道具={道具}）のその道具での番号が「{番号}」: "
+                             f"給与ソフトへ入れない人は「{渡さない印}」の 4 字だけ。外すなら「{渡さない印}」に、"
+                             f"入れるなら給与ソフトでの番号に直す")
+        if 番号 == 渡さない印 and no not in out:
             out.append(no)
     return tuple(out)
 
@@ -250,7 +257,7 @@ def 字にする(値: Decimal, 形: str, 時間の書き方: str | None) -> str:
         return str(int(値))
     if 形 == "分":
         return 分を字に(値, 時間の書き方)
-    return _数の字(値)
+    return 数の字(値)
 
 
 def 字を数に(字: str, 形: str, 時間の書き方: str | None) -> Decimal | None:
@@ -263,7 +270,7 @@ def 字を数に(字: str, 形: str, 時間の書き方: str | None) -> Decimal 
     return 数にする(s)
 
 
-def _数の字(v: Decimal) -> str:
+def 数の字(v: Decimal) -> str:
     v = v.normalize()
     if v == v.to_integral_value():
         return str(int(v))

@@ -133,12 +133,12 @@ def test_無しの表は挙げない():
 def test_呼び口は挙げた時に_1_無い時に_0_を返す(tmp_path, capsys):
     (tmp_path / "作り物.json").write_text(
         json.dumps(_表({"毎年": "03-01"}, [_行("2025-03", None)]), ensure_ascii=False), encoding="utf-8")
-    assert 見張り.main(["--日", "2026-11-18", "--置き場", str(tmp_path)]) == 1
+    assert 見張り.main([], 今日=date(2026, 11, 18), 置き場=tmp_path) == 1
     出 = capsys.readouterr().out
     assert "過ぎた: 法の表「作り物」 2026-03" in 出 and 出.rstrip().splitlines()[-1].startswith("知らせ:")
     空 = tmp_path / "空"
     空.mkdir()
-    assert 見張り.main(["--日", "2026-11-18", "--置き場", str(空)]) == 0
+    assert 見張り.main([], 今日=date(2026, 11, 18), 置き場=空) == 0
 
 
 
@@ -158,3 +158,19 @@ def test_毎年と4月の改定を_2月に照らすと挙げる():
     t4 = _表({"毎年": "04-01"}, [_行("2026-04-01", "2027-03-31"), _行("2027-04-01", None, "まだ")], 基準="締め日")
     assert _種類(見張り.見る_表(t3, date(2027, 2, 15), 90)) == [("近い", "2027-03", {})]
     assert _種類(見張り.見る_表(t4, date(2027, 2, 15), 90)) == [("近い", "2027-04-01", {})]
+
+
+@pytest.mark.parametrize("引数", [["--日", "2099-01-01"], ["--日数", "0"], ["--置き場", "空"]])
+def test_注入_呼ぶ人の申告で見る日_日数_置き場をずらせない(引数):
+    """誤りの類: 日をずらす・日数を 0 にする・空の置き場を指す申告 1 つで「無し」で通る。→ 呼び口は引数を受けずに止まる。"""
+    with pytest.raises(SystemExit) as e:
+        見張り.main(引数)
+    assert e.value.code == 2
+
+
+def test_注入_無しの訳で外した表を毎回名指しで出す(tmp_path, capsys):
+    """誤りの類: `次の改定` に 無し と訳を書くだけで黙って見張りから外れる。→ 外れた表は毎回 見張りの外 の行に出る。"""
+    (tmp_path / "外した表.json").write_text(
+        json.dumps(_表({"無し": "作り物の訳"}, [_行("2017-09", None)]), ensure_ascii=False), encoding="utf-8")
+    assert 見張り.main([], 今日=date(2026, 11, 18), 置き場=tmp_path) == 0
+    assert "見張りの外: 法の表「外した表」: 作り物の訳" in capsys.readouterr().out

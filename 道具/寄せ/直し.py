@@ -146,15 +146,15 @@ def 前の名か(名: str, 前: str) -> bool:
     return False
 
 
-def _読み替える(x, 対):
+def 読み替える(x, 対):
     if isinstance(x, str):
         for a, b in 対:
             x = x.replace(a, b)
         return x
     if isinstance(x, list):
-        return [_読み替える(v, 対) for v in x]
+        return [読み替える(v, 対) for v in x]
     if isinstance(x, dict):
-        return {_読み替える(k, 対): _読み替える(v, 対) for k, v in x.items()}
+        return {読み替える(k, 対): 読み替える(v, 対) for k, v in x.items()}
     return x
 
 
@@ -168,7 +168,7 @@ def 今の名で読む(直したち: list[dict]) -> list[dict]:
     out = []
     for d in 直したち:
         対 = [(a, b) for a, b, v in 止め if d["版"] < v and b and "<" not in b]
-        out.append({k: (_読み替える(v, 対) if k in ("操作", "手がかり") else v) for k, v in d.items()} if 対 else d)
+        out.append({k: (読み替える(v, 対) if k in ("操作", "手がかり") else v) for k, v in d.items()} if 対 else d)
     return out
 
 
