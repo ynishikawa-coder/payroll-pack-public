@@ -268,17 +268,12 @@ def test_分からない訳は直し方を両方言う():
     assert "/無い/所" in 場所.分からない訳("x", "/無い/所")
 
 
-def test_照らしの道具と見張りの知らせは分からない訳を使う(tmp_path, monkeypatch, capsys):
-    """パックの場所が分からない時、問いの照らし・出す前の照らし・オーナーへの文の照らし・書く道具の見張りの知らせに直し方の両方が入る。"""
+def test_照らしの道具と見張りの知らせは分からない訳を使う(tmp_path, monkeypatch):
+    """パックの場所が分からない時、出す前の照らし・オーナーへの文の照らし・書く道具の見張りの知らせに直し方の両方が入る。"""
     import subprocess
     import sys
     monkeypatch.delenv("PAYROLL_PACK_DIR", raising=False)
-    import 問いの照らし as Q
-    assert Q.main(["--rows", "x", "--パック", str(tmp_path)], runner=None) == 2
-    err = capsys.readouterr().err
-    assert "入れ直す" in err and "PAYROLL_PACK_DIR" in err
     渡した = f"渡されたパックの dir {tmp_path}"   # 渡した dir が訳に出る（環境が無い時の訳に化けない）
-    assert 渡した in err
     入力 = tmp_path / "入力.json"
     入力.write_text("{}", encoding="utf-8")
     r = subprocess.run([sys.executable, str(PLUGIN / "bin" / "出す前の照らし.py"), "照らす", str(入力), "--パック", str(tmp_path)],
@@ -299,11 +294,11 @@ def test_照らしの道具と見張りの知らせは分からない訳を使�
 
 
 def test_知らせの文を道具に写さない():
-    """「plugin payroll-agent を入れ直す」の文はパックの場所.py の 1 か所だけに在る（3 つの道具と見張りは呼ぶだけ）。"""
+    """「plugin payroll-agent を入れ直す」の文はパックの場所.py の 1 か所だけに在る（2 つの道具と見張りは呼ぶだけ）。"""
     文 = "plugin payroll-agent を入れ直す"
     在る = [f.name for f in [*(PLUGIN / "bin").glob("*.py"), *(PLUGIN / "hooks").glob("*.py")] if 文 in f.read_text(encoding="utf-8")]
     assert 在る == ["パックの場所.py"]
-    for f in ("問いの照らし.py", "出す前の照らし.py", "オーナーへの文の照らし.py"):
+    for f in ("出す前の照らし.py", "オーナーへの文の照らし.py"):
         assert "分からない訳" in (PLUGIN / "bin" / f).read_text(encoding="utf-8"), f
     assert "分からない訳" in (PLUGIN / "hooks" / "見張り.py").read_text(encoding="utf-8")
 

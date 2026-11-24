@@ -1764,10 +1764,17 @@ def 旧のタブを照らす(o: 物, 記: 記録, 手がかり: dict | None = No
 列の字 = _字.列の字  # 列の字の正本は 芯.字（1 始まり）＝ここで組まない
 
 
+def 翌月末(日: dt.date) -> dt.date:
+    y, m = 日.year + 日.month // 12, 日.month % 12 + 1
+    return dt.date(y, m, calendar.monthrange(y, m)[1])
+
+
 def 期限の日(今日: dt.date) -> str:
-    """寄せの写しの消す日（推奨）: 寄せた日の翌々月末。突き合わせ（§1.6）の後の月末までに見回りが消す問いへ並べる。"""
-    y, m = 今日.year + (今日.month + 1) // 12, (今日.month + 1) % 12 + 1
-    return dt.date(y, m, calendar.monthrange(y, m)[1]).isoformat()
+    """寄せ・配りの写しの名に付ける消す日（寄せる道具.md §4.2）: 寄せの回の中の突き合わせ（§1.6）が緑になった日の翌月末。
+    突き合わせは寄せの回の中（寄せ中を外す条件）＝緑になるのは早くて寄せた日＝名の日は寄せた日の翌月末（いちばん早い日）。
+    寄せ中で止まった会社・まだ緑になっていない会社の写しは、見回りが管理表（寄せの印・配った日）を読んで並べない
+    （見回り.置き場を見る が 名の日 と 最後に配った日 の翌月末 の遅い方を期限にする）。"""
+    return 翌月末(今日).isoformat()
 
 
 def 大きさ(*grids):
@@ -1796,7 +1803,7 @@ def 写しから戻す(o: 物, K: dict) -> dict:
     for m in K["md"]:
         if m in o.md:
             continue
-        写し = sorted(k for k in o.md if re.fullmatch(re.escape(履歴の名) + r"/消す_\d{4}-\d{2}-\d{2}_" + re.escape(m.replace("/", "_")), k))
+        写し = sorted(k for k in o.md if (r := 写しを読む(k)) and r[1] == m.replace("/", "_"))
         if 写し:
             o.md[m] = o.md[写し[-1]]
             戻した[m] = 写し[-1]
@@ -1850,7 +1857,7 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
     渡し = [x for x in 変わる if (x[2], x[3]) in 渡す]
     書く, 戻す = [], []
     for f in sorted({x[0] for x in 変わる if x[0]}):
-        書く.append({"する": "file を写す", "元": f, "先": f"{履歴の名}/消す_{消す日}_{f.replace('/', '_')}"})
+        書く.append({"する": "file を写す", "元": f, "先": 写しの先(消す日, f)})
     for a, b in 記.移した:
         書く.append({"する": "file を移す", "前": a, "後": b})
     for f, a, b in 記.タブの名:
@@ -1860,7 +1867,7 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
     # md は Drive の口で中身を直せない（canEdit=false）＝元を 9_履歴 へ移し（寄せの写しを兼ねる）、同じ名で新しく作る
     for m, text in md_変わる:
         if m not in 戻した_md:  # 写しから戻した md は元がもう 9_履歴 に在る＝作るだけ
-            書く.append({"する": "file を移す", "前": 今の名(m), "後": f"{履歴の名}/消す_{消す日}_{今の名(m).replace('/', '_')}"})
+            書く.append({"する": "file を移す", "前": 今の名(m), "後": 写しの先(消す日, 今の名(m))})
         書く.append({"する": "md を作る", "名": 今の名(m), "本文": text})
     for _, _, nf, nt, rows, after in 受け + 渡し:
         h, w = 大きさ(rows or [], after)
@@ -1876,7 +1883,7 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
                    "書き方": 字のまま})
     戻した_md = 戻した_md or {}
     for m, _ in md_変わる:  # 作った md を 9_履歴 へ外し、移した元（写しから戻した md は実の写しの名）を同じ名へ戻す
-        写し = 戻した_md.get(m) or f"{履歴の名}/消す_{消す日}_{今の名(m).replace('/', '_')}"
+        写し = 戻した_md.get(m) or 写しの先(消す日, 今の名(m))
         戻す.append({"する": "file を移す", "前": 今の名(m), "後": f"{履歴の名}/寄せた後_{消す日}_{今の名(m).replace('/', '_')}"})
         戻す.append({"する": "file を移す", "前": 写し, "後": 今の名(m)})
     for nf, nt in sorted(足した, reverse=True):
@@ -2031,7 +2038,7 @@ def 確認事項の前の形を移す(o: 物, 記: 記録, 今日: dt.date) -> l
         動かす.append(前)
     out = []
     for 前 in 動かす:
-        後 = f"{履歴の名}/消す_{消す日}_{前.rstrip('/').rsplit('/', 1)[-1]}" + ("/" if 前.endswith("/") else "")
+        後 = 写しの先(消す日, 前.rstrip('/').rsplit('/', 1)[-1] + ("/" if 前.endswith("/") else ""))
         n = len(記.移した)
         当てる操作(o, {"する": "file を置き場へ移す", "前": 前, "後": 後}, {}, 記, 0, 0, {})
         if len(記.移した) > n:
@@ -2185,7 +2192,20 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     return 結果
 
 
-写しの頭 = f"{履歴の名}/消す_"
+# 9_履歴/消す_<日>_<元の名> の名の形の正本は 確認ページ.消す名（組む）・消す名を読む（読む）＝ここは 9_履歴/ を前に付けるだけ。
+写しの頭 = f"{履歴の名}/{確認ページの形().消す名の頭}"
+
+
+def 写しの先(消す日, 元: str) -> str:
+    """寄せ・配りの写しを置く名 9_履歴/消す_<消す日>_<元の / を _>（名の形は 確認ページ.消す名 が組む・形の外は拒む）。"""
+    尾 = "/" if 元.endswith("/") else ""   # フォルダは末の / ごと移す
+    return f"{履歴の名}/{確認ページの形().消す名(消す日, 元.rstrip('/').replace('/', '_') + 尾)}"
+
+
+def 写しを読む(名: str) -> tuple[str, str] | None:
+    """9_履歴/消す_<日>_<元の名> を (日, 元の名) に読む（形でなければ None）。"""
+    頭 = f"{履歴の名}/"
+    return 確認ページの形().消す名を読む(名[len(頭):]) if isinstance(名, str) and 名.startswith(頭) else None
 
 
 def 写した名(書く: list[dict]) -> list[str]:
@@ -2194,7 +2214,7 @@ def 写した名(書く: list[dict]) -> list[str]:
             if s["する"] in ("file を写す", "file を移す") and str(s.get("先") or s.get("後") or "").startswith(写しの頭)]
 
 
-写しの名 = re.compile(re.escape(履歴の名) + r"/消す_(\d{4}-\d{2}-\d{2})_(.+)")
+写しの名 = re.compile(re.escape(履歴の名) + "/" + 確認ページの形().消す名の形.pattern)
 
 
 def 写しの場所を読む(会社: dict) -> list[str]:

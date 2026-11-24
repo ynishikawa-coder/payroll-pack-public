@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from 芯 import 設定
 
 from .形 import 区分か, 区分だけか, 理由
@@ -89,6 +91,33 @@ def 暦が要るか(v: dict) -> bool:
             or (v.get("日割.割る数") == "会社のその月の所定日数" and v.get("時間.月の所定日数の出し方") != "固定の値"))
 
 
+# 欠勤.控除の式＝欠勤が多い月だけ出た日で払う の「多い月」の線（会社の段）。N 日以上の線は N を 欠勤.多い月の日数 で持つ
+多い月の式 = "欠勤が多い月だけ出た日で払う"
+半分の線 = "所定日数の半分を超えた月"
+N日の線 = "欠勤が N 日以上の月"
+
+
+def 多い月の日数(v: dict) -> int | None:
+    """N 日以上の線の N（1 以上の整数）。空・数でない・整数でない・1 未満は None（黙って半分の線へ倒さない＝確かめる が仮＋問い）。"""
+    字 = v.get("欠勤.多い月の日数")
+    if isinstance(字, bool) or isinstance(字, float):
+        return None
+    try:
+        n = Decimal(str(字).strip().replace(",", "")) if not _空(字) else None
+    except InvalidOperation:
+        return None
+    if n is None or not n.is_finite() or n != n.to_integral_value() or n < 1:
+        return None
+    return int(n)
+
+
+def 多い月の日数の欠け(v: dict) -> bool:
+    """月給の形の人で N 日以上の線を選んだのに N が読めないか（読めない月は半分の線で見当して仮）。"""
+    from .支給控除 import 月給の形   # 支給控除 は 要る値 を引く（import の輪を避けて関数の中で引く）
+    return (v.get("支払.賃金の形") in 月給の形 and v.get("欠勤.控除の式") == 多い月の式
+            and v.get("欠勤.多い月の線") == N日の線 and 多い月の日数(v) is None)
+
+
 def 外れの理由(x: 設定.外れ) -> 理由:
     e = 設定.表()[x.名]
     選べる = "・".join(e.get("選べる値") or ()) or "表の形"
@@ -129,4 +158,10 @@ def 確かめる(値たち: dict, 集計の外れ=()) -> tuple[dict, list[tuple[
                 v[名] = 見当
             out.append((効く, 理由(f"「{名}」が無い", "" if 見当 is None else str(見当), 拠り所,
                                    f"{名} の値を書く（例: 見当のとおり）")))
+    if 多い月の日数の欠け(v):
+        字 = v.get("欠勤.多い月の日数")
+        out.append(("欠勤控除", 理由(
+            f"欠勤.多い月の線 が {N日の線} なのに 欠勤.多い月の日数 が{'無い' if _空(字) else f'読めない（「{字}」）'}",
+            半分の線, f"欠勤が多い月の線の N が無い＝{半分の線}で見当（黙って決めない）",
+            "欠勤.多い月の日数 を 1 以上の整数で書く（例: 10）。半分の線にするなら 欠勤.多い月の線 を 所定日数の半分を超えた月 にする")))
     return v, out

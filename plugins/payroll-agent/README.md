@@ -9,7 +9,7 @@
 | `決まり.md` | 給与の窓が常に守る線 | `scripts/差し込む.py inject` を SessionStart の hook が呼んで差し込む（hook の登録は同じ plugin の hooks の dir に置く） |
 | `skills/payroll-steps/SKILL.md` | 毎月の手順（0 初期設定・1 材料をそろえる・2 給与計算） | skill（呼び名 `payroll-agent:payroll-steps`） |
 | `口の一覧.md` | 各社の側が満たす口（名・渡す物・返す物・守る事） | 手順と決まりが口の名で指す |
-| `hooks/`・`bin/` | 照らし（出す前の照らし・止める見張り・問いの照らし・オーナーへの文の照らし） | hook と道具 |
+| `hooks/`・`bin/` | 照らし（出す前の照らし・止める見張り・オーナーへの文の照らし） | hook と道具 |
 | `scripts/差し込む.py` | 決まりを差し込む口と、量の上限の照らし | hook が呼ぶ |
 
 ## 届け方と版
