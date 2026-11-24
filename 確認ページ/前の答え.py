@@ -24,7 +24,8 @@
 
 パックは Drive を開かない。質問と回答（タブ 質問・get_values の形・1 行目が見出し）は殻が読んで file に置き、その path を渡す:
   確認ページ（check.mjs --run-prior が呼ぶ・標準入力に qa-prior/1）:
-      環境 PAYROLL_QA_ROWS=<質問の表の JSON の path>・PAYROLL_QA_COMPANY=<会社>（任意）・PAYROLL_PACK_DIR=<パックの dir>
+      環境 PAYROLL_QA_ROWS=<質問の表の JSON の path>・PAYROLL_QA_COMPANY=<会社>（任意）
+      （命令は値の表の repo の根＝パックの根で走る＝check.mjs の約束。道具の場所を環境や今の dir から引かない）
   手で: python3 確認ページ/前の答え.py --rows <path> [--company <会社>] [--questions <1 行 1 問の file>]
 出力: {"answered": {鍵: "<前の問いの番号>（<訳>）"}, "checked": {鍵: "照らした: 質問と回答 N 行・答え済み M 問"},
       "詰め直し": {鍵: {"前の問い": [番号…], "前の答え": [字…], "回目": N}}}（詰め直しは checked の鍵にも訳を添える）。

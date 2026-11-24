@@ -18,16 +18,27 @@
   5. 名の照らし: Drive の道具で確認ページ（名の頭はパックの 確認ページ.py の 名の頭たち＝今の形と前の形）を作る時、名がパックの確認ページの名の形
      （確認ページ/確認ページ.py の 名の形）でない・置き場が違う（同じ所の 置き場の名たち＝名の 組 が 事務所 なら 事務所 の
      フォルダ・ほかは会社のフォルダ。正本は 初期設定/型.json の 木.確認事項の置き場）
+  6. 年の台帳（名が `台帳_<支給年>`＝パックの 初期設定/型の口.台帳の名か が正本）へ、1 のシートの道具で直に書く・Drive の道具で
+     その名の本を作る・写す・元を写す／移す／書き換える（9_履歴へ移すを含む）。書くのは 月次/台帳へ書く.py の書く手順を
+     当てる口（殻の *_gate.py が Bash の python で呼ぶ）だけ＝道具の直の書き込みは止め、Bash で関所を呼ぶ道は 4 の外で止めない
 宛先の名が引けない時は止める（引けない＝見分けられない）。名を引く口が「見えない」と返した本（出荷の口に見えない本）は通す。
 名・タブ・見出し・値の字は、パックの字のそろえ方の正本（芯/字.py・口の 字）でそろえてから比べる（頭の空白・全角・幅の無い字で
-抜けない）。そろえ方が渡らない口は見分けられない＝止める。
+抜けない）。
+判定とそれが読む物は同じ版から読む（根治・2026-11-20・台帳の束 K-guardver）: 口が 字・守るタブ・管理表の名・確認ページの頭たち・台帳の名か を渡さない時（その版を知らない
+前の入口・殻の入口）、判定は自分と同じ版のパック（この file の上を辿った repo・無ければ plugin を入れた同じ版の目録の複製）から
+読む（`自分の版の部品`・入口ごとに写さない）。それでも字のそろえ方が読めない時は、守る物に掛かる命令だけを止める: シート・Drive の
+道具の書き込み（宛先の名を照らせない）と、Bash で置き換える命令の置き換える先が在る・見分けられない文。守る物に掛からない Bash
+（置き換える命令を含まない命令）は通す（前の形は echo まで全部止め、窓が動けなくなった）。
 名を引く・見出しを引く手は殻が渡す（口）。ここは Drive を開かない。Python 3 の標準ライブラリだけ。
 """
 from __future__ import annotations
 
 import re
 import shlex
-from dataclasses import dataclass, field
+import sys
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
+from pathlib import Path
 from typing import Callable
 
 シートの書き込み = ("update_values", "append_values", "batch_clear_values", "update_formulas", "update_spreadsheet",
@@ -47,10 +58,11 @@ class 口:
     印: str = ""                                          # 出荷の口が置いた本の印（appProperties の鍵・値 "1"）
     置き換える命令: tuple[str, ...] = ()                   # Bash の `<命令> replace <id>` の命令の名（末尾で見る）
     確認ページの形: tuple[str, dict] | None = None         # (名の正規表現, {"会社": フォルダの名, "事務所": フォルダの名})＝パックの場所.確認ページの名の形。パックに無い版では None
-    守るタブ: tuple[str, ...] = ()                        # 管理表の出荷の欄を持つタブの名（回の状況のタブ・出した物＝パックの場所.守るタブたち）。空＝見分けられない＝止める
-    管理表の名: str = ""                                  # 管理表の本の名（パックの場所.管理表の名＝型.json の木）。空＝見分けられない＝止める
-    確認ページの頭たち: tuple[str, ...] = ()              # 確認ページの名の頭（今の形と前の形・パックの場所.確認ページの頭たち）。空＝止める
-    字: object = None                                     # 字のそろえ方の正本（パックの 芯.字）。無い＝見分けられない＝止める
+    守るタブ: tuple[str, ...] = ()                        # 管理表の出荷の欄を持つタブの名（パックの場所.守るタブたち）。空＝判定と同じ版から読む・読めなければ止める
+    管理表の名: str = ""                                  # 管理表の本の名（パックの場所.管理表の名）。空＝判定と同じ版から読む・読めなければ止める
+    確認ページの頭たち: tuple[str, ...] = ()              # 確認ページの名の頭（パックの場所.確認ページの頭たち）。空＝判定と同じ版から読む・読めなければ止める
+    台帳の名か: Callable[[str], bool] | None = None        # 年の台帳の名か（パックの場所.台帳の名か＝型の口.台帳の名か）。無い＝判定と同じ版から読む・読めなければ止める
+    字: object = None                                     # 字のそろえ方の正本（パックの 芯.字）。無い＝判定と同じ版から読む・読めなければ止める
     引いた: list = field(default_factory=list)
 
 
@@ -86,12 +98,77 @@ def 見るか(tool: str) -> bool:
     return tool == "Bash" or short in シートの書き込み or short in Driveの書き込み
 
 
+def _場所():
+    """同じ bin の パックの場所（判定と同じ版）。"""
+    b = str(Path(__file__).resolve().parent)
+    if b not in sys.path:
+        sys.path.insert(0, b)
+    import パックの場所
+    return パックの場所
+
+
+def 自分の版のパック() -> Path | None:
+    """判定と同じ版のパック（正本は パックの場所.同じ版のパック・環境 PAYROLL_PACK_DIR は見ない）。"""
+    try:
+        return _場所().同じ版のパック(Path(__file__))
+    except Exception:  # noqa: BLE001  読めない＝同じ版が見つからない
+        return None
+
+
+# 口の欄 → パックの場所 の読む口。口が渡さない（空の）欄は判定と同じ版のパックから読む（入口ごとに写さない）
+_同じ版から読む欄 = (("字", "字の口"), ("守るタブ", "守るタブたち"), ("管理表の名", "管理表の名"),
+              ("確認ページの頭たち", "確認ページの頭たち"), ("台帳の名か", "台帳の名か"))
+
+
+@lru_cache(maxsize=None)
+def _部品(パック: str) -> dict:
+    """{口の欄: 値}。読めない欄は入れない。パックの場所 の読む口と同じ所から読む（写さない）。"""
+    場所 = _場所()
+    out = {}
+    for 欄, 読む口 in _同じ版から読む欄:
+        try:
+            out[欄] = getattr(場所, 読む口)(Path(パック))
+        except Exception:  # noqa: BLE001  読めない＝その欄は空のまま（使う所が止める）
+            pass
+    return out
+
+
+def 自分の版の部品() -> dict:
+    """判定と同じ版の部品 {字, 守るタブ, 管理表の名, 確認ページの頭たち, 台帳の名か}。同じ版のパックが無ければ {}。
+    試験はここを差し替える。"""
+    p = 自分の版のパック()
+    return {} if p is None else _部品(str(p))
+
+
+def _空(欄: str, v) -> bool:
+    return getattr(v, "そろえる", None) is None if 欄 == "字" else not v
+
+
+def そろえた口(k: 口) -> 口:
+    """口が渡さない欄（字・守るタブ・管理表の名・確認ページの頭たち・台帳の名か）を、判定と同じ版のパックから埋めた口
+    （渡された物はそのまま使う）。"""
+    空の欄 = [欄 for 欄, _ in _同じ版から読む欄 if _空(欄, getattr(k, 欄))]
+    if not 空の欄:
+        return k
+    部品 = 自分の版の部品()
+    return replace(k, **{欄: 部品[欄] for 欄 in 空の欄 if 欄 in 部品})
+
+
 def 判定(tool: str, args: dict, k: 口) -> str | None:
     """止める訳（止めないなら None）。"""
     short = tool.rsplit("__", 1)[-1]
     args = args if isinstance(args, dict) else {}
-    if 見るか(tool) and getattr(k.字, "そろえる", None) is None:
-        return "字のそろえ方（パックの 芯/字.py）が渡らない＝名を見分けられない"
+    if not 見るか(tool):
+        return None
+    k = そろえた口(k)
+    if getattr(k.字, "そろえる", None) is None:
+        if tool == "Bash":   # 守る物に掛かる命令（置き換える命令の置き換える先が在る・見分けられない文）だけ止める
+            try:
+                if not 置き換える先たち(str(args.get("command", "")), k.置き換える命令):
+                    return None
+            except ValueError:
+                pass
+        return "字のそろえ方（パックの 芯/字.py）が判定と同じ版からも読めない＝守る物の名を見分けられない"
     if tool == "Bash":
         return _bash(str(args.get("command", "")), k)
     if short in Driveの書き込み:
@@ -110,6 +187,9 @@ def 判定(tool: str, args: dict, k: 口) -> str | None:
         return f"書く先の本（{sid}）の名が引けない＝出す物の本か管理表か見分けられない"
     if 出す物の本か(m, k):
         return f"出す物の本（{m.get('name')}）へ道具で直に書く"
+    台帳 = 年の台帳か(m.get("name", ""), k)
+    if 台帳:
+        return 台帳 if 台帳 is not True else f"年の台帳（{m.get('name')}）へシートの道具で直に書く（書くのは 月次/台帳へ書く.py の書く手順を当てる口だけ）"
     if not k.管理表の名:
         return f"管理表の本の名がパック（初期設定/型.json の木）から読めない＝書く先（{m.get('name')}）が管理表か見分けられない"
     if not k.字.含む(m.get("name", ""), k.管理表の名):
@@ -150,6 +230,9 @@ def _drive(short: str, args: dict, k: 口) -> str | None:
     名 = str(args.get("name") or args.get("title") or (args.get("metadata") or {}).get("name") or "")
     if k.字.頭が(名, k.名の頭たち):
         return f"Drive の道具で出す物の本（{名}）を作る"
+    台帳 = 年の台帳か(名, k) if short != "update_file" else None   # update_file の name は元の本の名＝下の元で照らす
+    if 台帳:
+        return 台帳 if 台帳 is not True else f"Drive の道具で年の台帳（{名}）を作る・写す（作るのは 月次/台帳へ書く.py の書く手順を当てる口だけ）"
     if not k.確認ページの頭たち:
         return f"確認ページの名の形（名の頭たち＝確認ページ/確認ページ.py）がパックから読めない＝{名 or '名の無い物'} が確認ページか見分けられない"
     if k.字.頭が(名, k.確認ページの頭たち):
@@ -164,7 +247,18 @@ def _drive(short: str, args: dict, k: 口) -> str | None:
             return f"元のファイル（{src}）の名が引けない＝出す物の本か見分けられない"
         if 出す物の本か(m, k):
             return f"Drive の道具で出す物の本（{m.get('name')}）を写す・書き換える"
+        台帳 = 年の台帳か(m.get("name", ""), k)
+        if 台帳:
+            return 台帳 if 台帳 is not True else f"Drive の道具で年の台帳（{m.get('name')}）を写す・移す・書き換える"
     return None
+
+
+def 年の台帳か(名, k: 口) -> bool | str:
+    """名が年の台帳（`台帳_<支給年>`・名の形の正本はパックの 型の口.台帳の名か）か。字のそろえ方でそろえてから照らす。
+    名の形がパックから読めない時は止める訳の字を返す（見分けられない）。"""
+    if k.台帳の名か is None:
+        return f"年の台帳の名の形（初期設定/型の口.台帳の名か）がパックから読めない＝{名 or '名の無い物'} が年の台帳か見分けられない"
+    return bool(k.台帳の名か(k.字.そろえる(名)) or k.台帳の名か(str(名).strip()))
 
 
 def 確認ページの名の外れ(名: str, args: dict, k: 口) -> str | None:
@@ -196,12 +290,166 @@ def 確認ページの名の外れ(名: str, args: dict, k: 口) -> str | None:
 
 
 区切り = set("();&|<>")
+_私用の字 = "".join(map(chr, range(0xE000, 0xE110)))                   # 字に出ない私用の字（仮の字の元）
+_仮の字 = {c: _私用の字[i] for i, c in enumerate(sorted(区切り))}   # 引用・\ の中の区切りの字（ただの字）の仮の字
+_本文の字 = {c: _私用の字[0x20 + i] for i, c in enumerate(sorted(区切り | set(" \t\n'\"\\")))}   # heredoc の本文の字（本文を 1 つの字にする）
+_仮の字を戻す = {v: c for d in (_仮の字, _本文の字) for c, v in d.items()}
+_fd = {str(d): _私用の字[0x100 + d] for d in range(10)}                # リダイレクトの頭の数字（`2>` の 2）の仮の字
+_fdを戻す = {v: d for d, v in _fd.items()}
+_fdの字 = "".join(_fd.values())
+_リダイレクトの形 = "[" + _fdの字 + r"]*(?:<<<|<<-|<<|<>|<&|>&|&>>|&>|>>|>\||<|>)"
+_リダイレクト = re.compile(_リダイレクトの形)
+_置換 = re.compile(r"[<>]\(")                                         # プロセス置換 `<(…)`・`>(…)` の頭
+_記号の並び = re.compile(r"[<>]\(|" + _リダイレクトの形 + r"|&&|\|\||;;|[;&|()]")
 
 
-def _語(cmd: str) -> list[str]:
-    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+def _heredocの終わり(cmd: str, i: int) -> tuple[str, bool]:
+    """i が `<<`・`<<-` の頭の時、その終わりの語（引用と \\ を外す）と、行の頭のタブを外すか。"""
+    j = i + 2
+    tabs = j < len(cmd) and cmd[j] == "-"
+    j += 1 if tabs else 0
+    while j < len(cmd) and cmd[j] in " \t":
+        j += 1
+    語, q = [], ""
+    while j < len(cmd):
+        c = cmd[j]
+        if q:
+            q = "" if c == q else q
+            if q:
+                語.append(c)
+        elif c in "'\"":
+            q = c
+        elif c == "\\" and j + 1 < len(cmd):
+            語.append(cmd[j + 1])
+            j += 1
+        elif c.isspace() or c in 区切り:
+            break
+        else:
+            語.append(c)
+        j += 1
+    return "".join(語), tabs
+
+
+def _印を付ける(cmd: str) -> str:
+    """shell と同じに引用（'…'・"…"）・\\・注（語の頭の # から行の終わり）・改行・heredoc を見て、shlex で割れる字にする。
+    - 引用や \\ の中の区切りの字は仮の字（ただの字）にする。`\\` と改行の続き（行の継ぎ）は shell と同じに消す。
+    - 語の頭から < > の直前まで続く数字（`2>&1` の 2）は仮の字（リダイレクトの頭）にする。`>&`・`<&` の直後の数字
+      （`2>&1` の 1）は写す先の語で、語の頭でない（`2>&1>log` の 1 を印にすると `>&1>` が 1 字句になり後ろを読み落とす）。
+    - 引用の外の改行は命令の区切り（`;`）にする（改行の後は前の命令の引数でない）。
+    - heredoc（`<<語`・`<<-語`）の本文（次の行から終わりの語の行まで）は 1 つの字にし、前後を区切る（本文は命令の引数でない）。
+    shlex は引用を外すと `'>'` と `>` を見分けられず、`2>` を `2` と `>` に割り、改行を空白と読むため、割る前に印を付ける。"""
+    out: list[str] = []
+    待つ: list[tuple[str, bool]] = []                     # この行で始まった heredoc の終わりの語
+    i, n, q = 0, len(cmd), ""
+    while i < n:
+        c = cmd[i]
+        前 = cmd[i - 1] if i else ""
+        語の頭 = i == 0 or 前.isspace() or (前 in 区切り and not (前 == "&" and i >= 2 and cmd[i - 2] in "<>"))
+        if q == "'":
+            out.append(_仮の字.get(c, c))
+            q = "" if c == "'" else q
+        elif c == "\\" and i + 1 < n and cmd[i + 1] == "\n":   # 行の継ぎ（引用の外と "…" の中）
+            i += 1
+        elif c == "\\" and i + 1 < n:                     # 引用の外と "…" の中の \ は次の字を字にする
+            out += [c, _仮の字.get(cmd[i + 1], cmd[i + 1])]
+            i += 1
+        elif q == '"':
+            out.append(_仮の字.get(c, c))
+            q = "" if c == '"' else q
+        elif c in "'\"":
+            out.append(c)
+            q = c
+        elif c == "#" and 語の頭:
+            j = cmd.find("\n", i)
+            j = n if j < 0 else j
+            out.append(cmd[i:j])
+            i = j - 1
+        elif c == "\n":
+            out.append(" ; ")
+            for 終わり, tabs in 待つ:                     # 本文を 1 つの字にして前後を区切る
+                本文: list[str] = []
+                while i + 1 < n:
+                    j = cmd.find("\n", i + 1)
+                    j = n if j < 0 else j
+                    行 = cmd[i + 1:j]
+                    i = j
+                    if (行.lstrip("\t") if tabs else 行) == 終わり:
+                        break
+                    本文.append(行 + "\n")
+                if 本文:
+                    out.append("".join(_本文の字.get(x, x) for x in "".join(本文)) + " ; ")
+            待つ = []
+        elif c == "<" and cmd[i:i + 2] == "<<" and cmd[i:i + 3] != "<<<":
+            待つ.append(_heredocの終わり(cmd, i))
+            out.append("<<")
+            i += 1
+        elif c.isdigit() and 語の頭:
+            j = i
+            while j < n and cmd[j].isdigit():
+                j += 1
+            out.append("".join(_fd[d] for d in cmd[i:j]) if j < n and cmd[j] in "<>" else cmd[i:j])
+            i = j - 1
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _語(cmd: str) -> list[tuple[str, str]]:
+    """命令の文を字で分け、(字, 種) の並びにする。種は 語（ただの字。引用・\\ の中の < > ; なども語・heredoc の本文も 1 つの語）・
+    リダイレクト（`2>&1`・`>`・`>>`・`<`・`&>`・`>|`・`<<` など＝次の語がその的）・置換（プロセス置換の頭 `<(`・`>(`）・
+    区切り（; && || | & ( ) と改行）。shlex が続けて 1 字句にした記号（`;>`・`>>(` など）は記号ごとに割り直す。"""
+    lex = shlex.shlex(_印を付ける(cmd), posix=True, punctuation_chars="();&|<>" + _fdの字)
     lex.whitespace_split = True
-    return list(lex)                                      # 閉じない引用は ValueError
+    words = []
+    for w in lex:                                         # 閉じない引用は ValueError
+        if set(w) <= 区切り | set(_fdを戻す):
+            for x in _記号の並び.findall(w) if "".join(_記号の並び.findall(w)) == w else [w]:
+                種 = "置換" if _置換.fullmatch(x) else "リダイレクト" if _リダイレクト.fullmatch(x) else "区切り"
+                words.append(("".join(_fdを戻す.get(c, c) for c in x), 種))
+        else:
+            words.append(("".join(_仮の字を戻す.get(c, _fdを戻す.get(c, c)) for c in w), "語"))
+    return words
+
+
+def _置換の後(words: list[tuple[str, str]], j: int) -> int:
+    """j 番の置換の頭（`<(`・`>(`）に対応する `)` の次の番。中は別の命令（呼ぶ側が別に読む）。"""
+    深さ = 0
+    while j < len(words):
+        w, 種 = words[j]
+        if 種 == "置換" or (種 == "区切り" and w == "("):
+            深さ += 1
+        elif 種 == "区切り" and w == ")":
+            深さ -= 1
+            if 深さ == 0:
+                return j + 1
+        j += 1
+    return j
+
+
+def _引数(words: list[tuple[str, str]], i: int) -> list[str]:
+    """i 番の語の次から次の区切りまでの引数。リダイレクトとその的（次が語の時だけ）は命令の引数でないので外し、後ろを
+    読み続ける。プロセス置換 `<(…)`・`>(…)` は 1 つの引数（中の字は別の命令＝この命令の引数でない）。"""
+    引数: list[str] = []
+    j = i + 1
+    while j < len(words):
+        w, 種 = words[j]
+        if 種 == "区切り":
+            break
+        if 種 == "リダイレクト":
+            j += 1
+            if j < len(words) and words[j][1] == "語":
+                j += 1
+            elif j < len(words) and words[j][1] == "置換":
+                j = _置換の後(words, j)
+            continue
+        if 種 == "置換":
+            引数.append("(置換)")
+            j = _置換の後(words, j)
+            continue
+        引数.append(w)
+        j += 1
+    return 引数
 
 
 def _気になる(字: str, 命令たち: tuple[str, ...], 両方: bool = False) -> bool:
@@ -213,8 +461,9 @@ def _気になる(字: str, 命令たち: tuple[str, ...], 両方: bool = False)
 
 def 置き換える先たち(cmd: str, 命令たち: tuple[str, ...], 深さ: int = 0) -> list[str]:
     """Bash の命令の文を字で分け（引用・\\ は shell と同じに外す＝`re\\place`・`'re'place` も replace）、挙げた命令の名
-    （末尾で見る・path 付きも）から次の区切り（; && | 改行の前の ( など）までの引数に `replace` が在る時、その次の字＝
-    置き換える先の id を集める（旗や旗の値を挟んでも見る）。名の前や別の部分命令の `replace`（python の str.replace・
+    （末尾で見る・path 付きも）から次の区切り（; && || | & ( など）までの引数に `replace` が在る時、その次の字＝
+    置き換える先の id を集める（旗や旗の値を挟んでも見る。`2>&1`・`>/dev/null`・`&>log`・`<in` などのリダイレクトと
+    その的は区切りでなく引数から外して読み続ける。引用の中の `>` などはただの字）。名の前や別の部分命令の `replace`（python の str.replace・
     echo replace）は集めない。命令の名と replace を両方含む 1 つの字（`bash -c '…'`・heredoc の中の引用）は分け直して見、
     分け直しても置き換える先が出ない時は見分けられない＝ValueError。分けられない文で、引用と \\ を外した字に replace か
     命令の名が在る時も ValueError（呼ぶ側が止める）。"""
@@ -227,15 +476,14 @@ def 置き換える先たち(cmd: str, 命令たち: tuple[str, ...], 深さ: in
             raise
         return []
     先たち: list[str] = []
-    for i, w in enumerate(words):
+    for i, (w, 種) in enumerate(words):
+        if 種 != "語":
+            continue
         if any(w.endswith(c) for c in 命令たち):
-            for j in range(i + 1, len(words)):
-                if set(words[j]) <= 区切り:
-                    break
-                if words[j] == "replace":
-                    fid = words[j + 1] if j + 1 < len(words) else ""
-                    先たち.append("" if set(fid) <= 区切り else fid)
-                    break
+            引数 = _引数(words, i)
+            if "replace" in 引数:
+                j = 引数.index("replace")
+                先たち.append(引数[j + 1] if j + 1 < len(引数) else "")
         elif _気になる(w, 命令たち, 両方=True):
             中 = 置き換える先たち(w, 命令たち, 深さ + 1) if 深さ < 3 and w != cmd else []
             if not 中:
@@ -258,4 +506,7 @@ def _bash(cmd: str, k: 口) -> str | None:
             return f"置き換える先（{fid}）の名が引けない＝出す物の本か見分けられない"
         if 出す物の本か(m, k):
             return f"置き換える命令で出す物の本（{m.get('name')}）を置き換える"
+        台帳 = 年の台帳か(m.get("name", ""), k)
+        if 台帳:
+            return 台帳 if 台帳 is not True else f"置き換える命令で年の台帳（{m.get('name')}）を置き換える（書くのは 月次/台帳へ書く.py の書く手順を当てる口だけ）"
     return None

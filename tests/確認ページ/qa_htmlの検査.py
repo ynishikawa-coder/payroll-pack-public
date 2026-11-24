@@ -39,6 +39,6 @@ def 答えを照らす(答え: dict) -> subprocess.CompletedProcess:
 def 当てる(f: Path, *足す: str, tmp: Path) -> subprocess.CompletedProcess:
     t = tmp / "質問と回答.json"
     t.write_text(json.dumps({"values": [質問の見出し]}, ensure_ascii=False), encoding="utf-8")
-    env = {**os.environ, "PAYROLL_QA_ROWS": str(t), "PAYROLL_PACK_DIR": str(根)}
+    env = {**os.environ, "PAYROLL_QA_ROWS": str(t), "PAYROLL_PACK_DIR": str(tmp / "無いパックの場所")}   # 道具は値の表の repo の根から引く（環境に頼らない）
     return subprocess.run(["node", 道具(), str(f), *足す, "--run-prior",
                            "--values", str(根 / "config" / "skill-values.json")], capture_output=True, text=True, env=env, cwd=tmp)

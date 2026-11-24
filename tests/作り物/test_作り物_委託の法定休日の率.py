@@ -38,7 +38,7 @@ def _欄の問い(r):
     return [q for q in r["問い"] if "委託.法定休日の率" in q["何が無いか"]]
 
 
-@pytest.mark.parametrize("欄", ["0", "1.35", "無し", "", None])
+@pytest.mark.parametrize("欄", ["0", "1.35", "無し", "", None, "欄の率どおり 0", "欄の率どおり 0.5"])
 def test_意味の決まらない欄で法定休日に働いた委託の人は仮で問い1つ(tmp_path, 欄):
     r = _回す委託(tmp_path, 欄, _法定休日)
     assert _状態(r)["委託分の休日"] == "仮" and _状態(r)["支払合計"] == "仮"

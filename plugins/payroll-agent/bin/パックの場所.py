@@ -1,7 +1,7 @@
 """給与エージェントの照らしが読むパックの 1 か所（出口の名の形・証明を照らす口・前の答えを照らす口）を探して読む。
 
 照らしの決まり（出す物の名の形・証明の形）はパックの出口に 1 か所だけ在る。ここは写さず、パックの dir を見つけてそこから読む。
-探す順: 引数 → 環境 PAYROLL_PACK_DIR（確認ページ/前の答え.py と同じ名）→ この file から上へ辿って `出口/名と版.py` が在る dir
+探す順: 引数 → 環境 PAYROLL_PACK_DIR→ この file から上へ辿って `出口/名と版.py` が在る dir
 → この plugin を入れた目録の複製（Claude Code が plugin を入れた所 `<plugins>/cache/<目録>/<plugin>/<版>/` の隣の
 `<plugins>/marketplaces/<目録>/`）で、その複製の HEAD の commit がこの plugin の版（commit の頭）と同じ時だけ
 （plugin とパックは同じ版の印を読む＝違う版の複製は使わない）。
@@ -29,6 +29,17 @@ def 探す(引数: str | None = None) -> Path | None:
         if (p / 目印).is_file():
             return p
     return 入れた目録()
+
+
+def 同じ版のパック(here: Path | None = None) -> Path | None:
+    """この plugin と同じ版のパック: この file の上を辿って `出口/名と版.py` が在る dir（パックの中の plugin）、無ければ
+    plugin を入れた目録の複製で HEAD が plugin の版と同じ物（入れた目録）。環境 PAYROLL_PACK_DIR は見ない（別の版を指し得る＝
+    照らしと読む物の版がずれる元・台帳の束 K-guardver）。照らしが自分の版の部品（芯.字 など）を読む時はここを先に見る。無ければ None。"""
+    me = (here or Path(__file__)).resolve()
+    for p in me.parents:
+        if (p / 目印).is_file():
+            return p
+    return 入れた目録(me)
 
 
 def _目録の複製(here: Path | None = None) -> tuple[Path, str, str | None] | None:
@@ -113,6 +124,12 @@ def 守るタブたち(パック: Path) -> tuple[str, ...]:
 def 管理表の名(パック: Path) -> str:
     """管理表の本の名（Drive の木の名の正本＝初期設定/型.json の 木.名.管理表 を 型の口 から読む）。読めない時は例外。"""
     return str(読む(パック, "初期設定.型の口").名("管理表"))
+
+
+def 台帳の名か(パック: Path):
+    """年の台帳の名か（`台帳_<支給年>`）を照らす口（正本は 初期設定/型.json の 名の形.台帳 を 型の口.台帳の名か が読む）。
+    書くのは 月次/台帳へ書く.py の書く手順を当てる口だけ＝見張りはシート・Drive の道具の直の書き込みを止める。読めない時は例外。"""
+    return 読む(パック, "初期設定.型の口").台帳の名か
 
 
 def _確認ページ(パック: Path):

@@ -306,3 +306,14 @@ def test_知らせの文を道具に写さない():
     for f in ("問いの照らし.py", "出す前の照らし.py", "オーナーへの文の照らし.py"):
         assert "分からない訳" in (PLUGIN / "bin" / f).read_text(encoding="utf-8"), f
     assert "分からない訳" in (PLUGIN / "hooks" / "見張り.py").read_text(encoding="utf-8")
+
+
+def test_全角や幅の無い字で書いた番号と語と印も同じ字で照らす():
+    # 束 K3 の続き: 前は NFKC なしの字で照らし、全角のＱ・幅の無い字を挟んだ語・頭に幅の無い字の印が知らせに出なかった
+    番号 = next(文 for 文, 字 in 悪い if 字.startswith("Q") or "Q" in 文)
+    全角 = 番号.translate(str.maketrans("Q0123456789-", "Ｑ０１２３４５６７８９－"))
+    assert 全角 != 番号 and any("番号" in x for x in 照.照らす(全角, 形)), 全角
+    assert any("検算" in x for x in 照.照らす("検​算をお願いします", 形))
+    assert any("原本の読み" in x for x in 照.照らす("原本 の読み方を教えて", 形))
+    assert 照.印を照らす(_画面("​〔道具の都合〕幅の無い字が頭に在っても印"), 印たち) == []
+    assert 照.印を照らす(_画面("〔道具の都合〕確認ページの置き場の名は？"), 印たち) == []
