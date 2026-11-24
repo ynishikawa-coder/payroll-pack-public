@@ -1572,7 +1572,8 @@ def _読んだまま答えどおり(q: dict, 台帳: dict, 会社: str, タブ: 
                 if b1 != sorted(tuple(字(r.get(c)) for c in 区間の事実) for r in b2) or any(字(r.get(照.訳の列)) for r in b2):
                     return False
                 if x.get("列"):
-                    if any(字(r1[0].get(c)) != 字(v) for c, v in x["列"].items()):
+                    if any((字(v) not in 字(r1[0].get(c)).split("、")) if c == "印" else 字(r1[0].get(c)) != 字(v)
+                           for c, v in x["列"].items()):   # 印は足すだけの答え（在る印に含まれれば同じ）
                         return False
                 elif x.get("時刻"):
                     if any(欄 not in 欄の列 or 時刻の字(r1[0].get(欄の列[欄])) != 時刻の字(v) for 欄, v in x["時刻"].items()):

@@ -65,7 +65,7 @@ def test_勤怠の来ない役員は確認済():
 
 
 
-@pytest.mark.parametrize("式", ["月額", "時給"])
+@pytest.mark.parametrize("式", ["月額", "時給", "決まった額"])
 @pytest.mark.parametrize("区分", ["", "取締役", *区分の語, *[f"{a}＋{b}" for a in 区分の語 for b in 区分の語 if a != b]])
 def test_勤怠の来ない人の状態は区分の全部で勤怠が要るかと揃う(区分, 式):
     # 注入: 区分の語の全部・＋ の組の全部・空・知らない語。集計が字の一致（役員だけ）で決めれば 月額の委託 などで外れる
