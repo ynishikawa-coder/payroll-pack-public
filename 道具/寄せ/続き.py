@@ -20,7 +20,6 @@
 形の崩れた入力は {"拒む": 訳}・終わりの値 2。
 """
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -30,7 +29,9 @@ if str(_根) not in sys.path:
 
 from 月次.口の入口 import 拒む, 回す  # noqa: E402  拒むの約束（どの崩れも {"拒む"}・終わりの値 2）は入口の 1 つだけ
 
-_記録の名 = re.compile(r"寄せの記録_\d{4}-\d{2}-\d{2}_\d{6}\.json")
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import 見回り  # noqa: E402  寄せの記録の名の形（口の記録の名）・9_履歴/消す_<日>_<名> の形（当てる.写しを読む）の正本＝ここに写さない
 渡す物 = "寄せる は 突き合わせる月（--突き合わせ 出荷の入力）か、まだ出していない訳（--突き合わせなし）のどちらか 1 つを渡す"
 
 
@@ -50,7 +51,7 @@ def 渡し方(会社: str, 突き合わせ, 突き合わせなし: str) -> dict:
 
 def 前の記録の名(名たち) -> str | None:
     """9_履歴 の名から一番新しい寄せの記録の名（無ければ None）。"""
-    got = sorted(n for n in (名たち or []) if isinstance(n, str) and _記録の名.fullmatch(n))
+    got = sorted(n for n in (名たち or []) if isinstance(n, str) and (m := 見回り.口の記録の名.fullmatch(n)) and m.group(1) == "寄せの記録")
     return got[-1] if got else None
 
 
@@ -101,9 +102,8 @@ def 突き合わせる月の後(渡した: bool, 前: dict | None, 見通し: di
 
 def 続き(写した物, 履歴: str, 在る写し: list, 前: dict | None, 書く手順: list) -> dict:
     """この回が作る写しと履歴に在る写しを照らし、前の回の写しから続ける。前の回の記録に無い写しが在れば重ねて書かない。"""
-    prefix = str(履歴) + "/消す_"
     if (not isinstance(写した物, list)
-            or not all(isinstance(p, str) and p.startswith(prefix) and p.count("/") == 1 for p in 写した物)
+            or not all(isinstance(p, str) and p.startswith(str(履歴) + "/") and 見回り.当てる.写しを読む(p) for p in 写した物)
             or len(set(写した物)) != len(写した物)):
         return {"赤": ["パックの写した物が履歴の写しの名の並びでない＝何も書かない"]}
     在る = [p for p in (在る写し or []) if isinstance(p, str)]
