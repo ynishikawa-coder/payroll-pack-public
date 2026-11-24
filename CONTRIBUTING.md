@@ -5,14 +5,14 @@ payroll-pack は、2 つのアカウント（Javis＝ynishikawa-coder・UTC＝sh
 
 ## 1. 枝と PR
 - 枝・1 枝 = 1 PR = 1 窓・PR の型は土台 §1 のとおり。PR の本文はこの repo の `.github/pull_request_template.md` の型で書く。
+- 使う側に関わる変わった事（`互換が切れる:` の行を含む）の正本は、その PR の `CHANGELOG.d/` の断片 1 つ（版を出す PR は `CHANGELOG.md` の版の節）。PR の本文は行の数と中身を写さず、断片の path も書かない（断片の名は枝の名で決まり〔`CHANGELOG.d/README.md`。`claude/<日付>-` の枝は `tests/test_骨.py` が名の違いを赤にする〕、PR の差分に在る＝本文に書くと枝の名の写しになり、打ち間違い・付け忘れを照らす所が要る。写すと断片とずれ、本文の数と実際の行が食い違う＝#359）。
 - どちらのアカウントの窓も、この repo へ直に枝を push し PR を出す（fork しない）。
 - PR 本文の頭の `検証した base の先端:` に、検証（試験・他の PR とのぶつかり）を行った時の base の先端の commit を書く。base が進んだら検証し直して書き直す（CI の「検証の鮮度」〔`.github/workflows/verify-base.yml`〕が違いを PR のチェックの表示で知らせる・止めない）。
 - 枝へ `git merge origin/main` で main を取り込んだら、`python3 scripts/取り込みの照らし.py` を回す（取り込みの commit が片側の行を黙って落としていないか。積んだ枝の base が squash で入った後は特に。CI も試験で同じ範囲を照らし、赤なら落ちる）。わざと捨てた行は、その file を取り込みの commit の文に `取り込みで捨てた行: <path>` と書く（取り込みの commit を書き直せない時は後の commit の文に）。
 
 ## 2. レビューと main へ入れる
-- レビューは書いた窓と別の窓がし、判定の形は土台の skill `review-pr`（`plugins/checker/skills/review-pr`）に従う。
-- main へ入れるのは **Javis 側の親窓** だけ（土台 §3。どちらのアカウントの PR も同じ）。
-- レビューは土台の skill `review-pr` で見る所に加えて、線の正本 `docs/設計/入れてよい物.md` に照らす（PR の「種類」が製品・顧客・移行なら赤）。
+- レビュー（誰が・何を確かめるか）と main へ入れる条件は、土台の核 §7 のとおり（ここに写さない）。判定の形は土台の skill `review-pr`（`plugins/checker/skills/review-pr`）。どちらのアカウントの PR も同じ。
+- 給与のパックだけの足し: レビューは土台の skill `review-pr` で見る所に加えて、線の正本 `docs/設計/入れてよい物.md` に照らす（PR の「種類」が製品・顧客・移行なら赤）。
 - 線の正本を変える PR と、Javis・UTC の窓で線の解釈が割れた PR は、green だけでは合流しない。オーナーの合意 1 つを待つ（オーナーは 1 人。Javis の窓・UTC の窓・連絡板〔ynishikawa-coder/agent-foundation の issue #2〕のどこで出した合意でもよい）。合意を得た PR は本文の頭に、合意の日と出した所（窓の session か連絡板）を書く ⟦鍵:給与計算/線が割れた時はオーナーの合意 1 つ⟧。この決まりの正本はここ（線の正本 §5 の 4 はここを指す）。
 
 ## 3. 置かない物

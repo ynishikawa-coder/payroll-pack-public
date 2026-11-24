@@ -2,7 +2,7 @@ name: 検証の鮮度
 
 # PR 本文の `検証した base の先端:` の commit が今の base の先端と同じで、PR の先端がそれを実際に含むか（compare）を照らし、PR のチェックの表示（check run）で知らせる。
 # 止めない（違っても欄が無くても conclusion は neutral＝合流を止めない）。照らしの正本は scripts/検証した先端の照らし.py。
-# PR の本文を直した・枝を押した時はその PR を、どれかの枝が進んだ時はその枝を base にする開いた PR の全部を照らし直す
+# PR の本文を直した・枝を押した時はその PR を、main が進んだ時は main を base にする開いた PR の全部を照らし直す
 # （main が進んだ後に本文の検証が古いままになるのを知らせる）。本文は shell の字へ差し込まず file で渡す。
 # pull_request_target: workflow と照らしの道具は base（既定の枝）の物で動く＝PR が照らしを書き換えて自分を success にできない。
 # PR の中身は checkout も実行もしない（本文と先端は API で読むだけ）ので、base の権限で PR の code が動く事は無い。
@@ -10,12 +10,21 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
   push:
-    branches: ["**"]
+    # PR は main 向けだけ＝main 以外の枝の push は照らす PR が無く、走るだけ Actions の分を払う。
+    branches: [main]
 
 permissions:
   contents: read
   pull-requests: read
   checks: write
+
+# 同じ PR の次の契機（本文の直し・push）が来たら古い実行を取り消す（新しい実行が同じ PR を今の値で照らす）。
+# main の push も新しい方が開いた PR の全部を今の main の先端で照らし直すので、古い方は取り消す。
+# ci.yml に畳まない: 照らしは base の物で動かす（pull_request_target）・本文の直し（edited）で走る・checks: write が要る。
+# pull_request の ci に畳むと PR が照らしを書き換えて自分を success にでき、本文を直しても照らし直さない。
+concurrency:
+  group: ${{ github.event_name == 'pull_request_target' && format('verify-base-pr-{0}', github.event.pull_request.number) || 'verify-base-main' }}
+  cancel-in-progress: true
 
 jobs:
   look:
