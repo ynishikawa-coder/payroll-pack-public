@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import unicodedata
 from datetime import date as _date
 from decimal import Decimal
 from pathlib import Path
@@ -174,16 +175,22 @@ def 容器か(名) -> bool:
     return str(名 or "").rsplit(_容器の区切り, 1)[-1].lower().endswith(容器の拡張子)
 
 
+def _制御の字を持つか(字) -> bool:
+    """制御の字（Cc＝\\x00-\\x1f・\\x7f-\\x9f）か書式の字（Cf＝幅の無い空白 U+200B・向きの印・BOM など）を持つか。
+    容器の名と中の名の照らしの 1 か所（見えない字で同じに見える 2 つの名を作らせない）。"""
+    return any(unicodedata.category(c) in ("Cc", "Cf") for c in str(字 or ""))
+
+
 def 道の段(道, 何: str = "中の名") -> list[str]:
     """容器の中の生の道（殻が容器から読んだまま渡す物）を / と \\ で段に分けて照らす 1 か所（中の名にも、入れ子の 容器 の
     外の容器より後の各段にも同じ直しを当てる＝直しを 2 つ持たない）。段は `_` でつなぐ（1_届いた物 は 1 段）。
 
     止める: 空の段・「.」「..」・前後に空白・区切りの字 `__` を持つ・`_` で始まるか終わる（つないだ時に `__` が出来る）・
-    制御の字。＝つないだ名に `__` が出来ない形だけを通す（`__` は容器と中の区切りだけ＝名から出所へ一意に戻る）。"""
+    制御の字と書式の字（Cc・Cf＝\\x7f・幅の無い空白も）。＝つないだ名に `__` が出来ない形だけを通す（`__` は容器と中の区切りだけ＝名から出所へ一意に戻る）。"""
     段たち = re.split(r"[/\\]", str(道 or ""))
     for 段 in 段たち:
         if (not 段.strip() or 段 in (".", "..") or 段 != 段.strip() or _容器の区切り in 段
-                or 段.startswith("_") or 段.endswith("_") or re.search(r"[\x00-\x1f]", 段)):
+                or 段.startswith("_") or 段.endswith("_") or _制御の字を持つか(段)):
             raise 台帳の形の誤り(f"容器の中の名: {何}「{道}」の段「{段}」は受けない（空・「.」「..」・前後の空白・"
                              f"区切りの字 {_容器の区切り}・_ で始まるか終わる・制御の字）")
     return 段たち
@@ -195,7 +202,7 @@ def 容器の段(容器名) -> list[str]:
     （`a__b.zip` のように外の名に `__` が在る物も、前の段が容器でないので止まる）。"""
     段たち = str(容器名 or "").split(_容器の区切り)
     外 = 段たち[0]
-    if not 外.strip() or "/" in 外 or "\\" in 外 or re.search(r"[\x00-\x1f]", 外):
+    if not 外.strip() or "/" in 外 or "\\" in 外 or _制御の字を持つか(外):
         raise 台帳の形の誤り(f"容器の中の名: 容器名「{容器名}」の外の容器は受け取り口の容器の名のまま（{'・'.join(容器の拡張子)}）")
     直した = [外] + ["_".join(道の段(段, "容器名")) for 段 in 段たち[1:]]
     if not all(容器か(段) for 段 in 直した):
