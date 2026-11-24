@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from fractions import Fraction
@@ -111,16 +112,27 @@ def 語をそろえる(語) -> str:
     return s
 
 
-# ---- 人.区分（初期設定/項目.json の 人.区分 の選べる値）----
-区分の語 = ("社員", "パート", "役員", "兼務役員", "委託", "委託の併用")
-併せ持てる区分 = (frozenset({"役員", "委託の併用"}),)   # 辞書の書き方 `役員＋委託の併用`（役員報酬と委託分を 1 枚に）
+# ---- 人.区分（語の正本は 芯/設定の表.json の 人.区分 の選べる値＝ここで写さない）----
+def _区分の表() -> tuple[tuple[str, ...], tuple[frozenset, ...]]:
+    import json
+    from pathlib import Path
+    表 = json.loads((Path(__file__).resolve().parents[1] / "設定の表.json").read_text(encoding="utf-8"))
+    値 = next(e for e in 表["項目"] if e["名"] == "人.区分")["選べる値"]
+    return (tuple(v for v in 値 if "＋" not in v),
+            tuple(frozenset(v.split("＋")) for v in 値 if "＋" in v))
+
+
+区分の語, 併せ持てる区分 = _区分の表()   # 1 語の区分・併せ持てる組（今は `役員＋委託の併用`＝役員報酬と委託分を 1 枚に）
 
 
 def 区分を読む(v) -> frozenset | None:
     """`人.区分` → 区分の語の組。項目の辞書の書き方のとおり空白と後ろの括弧の説明を除いて読み
-    （`委託の併用（雇用と委託を 1 枚の明細に）` と `委託の併用` を同じに）、`＋` で並べた語は併せ持つ（今は `役員＋委託の併用` だけ）。
-    空は空の組（既定の 社員 は 要る値 が埋める）。知らない語・併せ持てない組は None（読めない＝要る値 が仮＋問い）。"""
-    s = "".join(str(v if v is not None else "").split()).replace("+", "＋")
+    （`委託の併用（雇用と委託を 1 枚の明細に）` と `委託の併用`・`役員(代表)` と `役員` を同じに。全角半角の揺れは NFKC で吸う）、
+    `＋` で並べた語は併せ持つ（今は `役員＋委託の併用` だけ）。
+    空は空の組（既定の 社員 は 要る値 が埋める）。知らない語・併せ持てない組は None（読めない＝要る値 が仮＋問い・
+    入口の文脈 が勤怠を取るか決めずに名指しで止める）。"""
+    s = "".join(unicodedata.normalize("NFKC", str(v if v is not None else "")).split())
+    s = s.replace("+", "＋").replace("(", "（").replace(")", "）")
     if s.endswith("）") and "（" in s and not s.startswith("（"):
         s = s.split("（", 1)[0]
     if not s:

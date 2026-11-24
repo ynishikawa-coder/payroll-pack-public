@@ -21,7 +21,8 @@ import 止める見張り as W  # noqa: E402
       "m1": {"name": "作り物の会社_2_マスタ"},
       "L1": {"name": "00_事務所_管理表"},
       "x1": {"name": "名を変えた本", "appProperties": {"作り物の印": "1"}},
-      "f8": {"name": "8_確認事項"}, "f9": {"name": "9_ほか"}, "f0": {"name": "00_事務所"}}
+      "f8": {"name": "8_確認事項"}, "f9": {"name": "9_ほか"}, "f0": {"name": "00_事務所"},
+      "T1": {"name": "台帳_2099"}, "T2": {"name": " 台帳＿２０９９"}, "T3": {"name": "台帳_2099_写し"}}
 見出し = ["会社", "組", "支給月", "原本", "集計", "取り込み", "計算", "確認ページ", "納品", "外した人", "突き合わせ", "止まりの理由"]
 
 
@@ -35,7 +36,7 @@ def 口(**kw):
     base = dict(名の頭たち=場所.名の頭たち(根), 名を引く=名を引く, 見出しを引く=lambda sid, tab: 見出し, 印="作り物の印",
                 置き換える命令=("作り物_upload.py",), 確認ページの形=場所.確認ページの名の形(根),
                 守るタブ=場所.守るタブたち(根), 字=場所.字の口(根), 管理表の名=場所.管理表の名(根),
-                確認ページの頭たち=場所.確認ページの頭たち(根))
+                確認ページの頭たち=場所.確認ページの頭たち(根), 台帳の名か=場所.台帳の名か(根))
     base.update(kw)
     return W.口(**base)
 
@@ -207,13 +208,56 @@ def test_Bashはreplaceの字でなく置き換える命令の名の直後のrep
     assert W.判定("Bash", {"command": "作り物_upload.py replace s3"}, 口(置き換える命令=())) is None   # 殻が命令を渡さない
 
 
+リダイレクトを挟む止める文 = [
+    "python3 x/作り物_upload.py 2>&1 replace s3 a.csv",        # 壊す: 前は 2>&1・> ・&> ・< を区切りと読み、後ろの replace を捨てた
+    "python3 x/作り物_upload.py >/dev/null replace s3 a.csv",
+    "python3 x/作り物_upload.py &>log replace s3 a.csv",
+    "python3 x/作り物_upload.py <in replace s3 a.csv",
+    "作り物_upload.py 2>/dev/null replace s3",
+    "作り物_upload.py >> log replace s3",
+    "作り物_upload.py >| log replace s3",
+    "作り物_upload.py 1> log replace s3",
+    "作り物_upload.py >&2 replace s3",
+    "作り物_upload.py &>>log replace s3",
+    "作り物_upload.py 3<>f replace s3",
+    "作り物_upload.py <<<x replace s3",
+    "作り物_upload.py replace 2>&1 s3",                         # replace と id の間のリダイレクトも外して読む
+    "作り物_upload.py '>' replace s3",                         # 引用の中の > はリダイレクトでなくただの字（引数）
+    "作り物_upload.py \">\" replace s3",
+    "作り物_upload.py \\> replace s3",
+    "a 2>&1; 作り物_upload.py 2>&1 replace s3",
+]
+リダイレクトを挟む通す文 = [
+    "python3 x/作り物_upload.py list > x; echo replace s3",     # 本当の区切りの後の replace は別の命令の引数
+    "python3 x/作り物_upload.py list 2>&1 | grep replace s3",
+    "python3 x/作り物_upload.py list & echo replace s3",
+    "python3 x/作り物_upload.py list || echo replace s3",
+    "python3 x/作り物_upload.py list 2>&1 && echo replace s3",
+    "python3 x/作り物_upload.py list >/dev/null 2>&1",          # 置き換えでない命令は今どおり通す
+    "python3 x/作り物_upload.py 2>&1 replace m1 a.csv",         # 出す物でない本の置き換えは今どおり通す
+    "python3 x/作り物_upload.py list # it's > x",
+]
+
+
+def test_Bashはリダイレクトを区切りでなく引数から外して読み_本当の区切りでは区切る():
+    """注入: 置き換える命令の名と replace の間・replace と id の間に色々な書き方のリダイレクトを挟む（止める）。
+    本当の区切り（; | & || &&）の後の別の命令の replace と、置き換えでない命令（通す）。"""
+    for c in リダイレクトを挟む止める文:
+        assert j("Bash", command=c), c
+        assert "s3" in W.置き換える先たち(c, ("作り物_upload.py",)), c
+    for c in リダイレクトを挟む通す文:
+        assert j("Bash", command=c) is None, c
+    assert W.置き換える先たち("作り物_upload.py replace '>' s3", ("作り物_upload.py",)) == [">"]   # 引用の > は id の字
+    assert j("Bash", command="作り物_upload.py replace >log")                                   # 的の外に id が無い＝止める
+
+
 def test_hookはパックの場所が無い時も同じ見分けでBashを止める(tmp_path):
     env = dict(PAYROLL_PACK_DIR=str(tmp_path), PAYROLL_GUARD_REPLACE_CMDS="作り物_upload.py、ほか.py")
     def bash(c):
         return _hook(json.dumps({"tool_name": "Bash", "tool_input": {"command": c}}), **env).stdout
     for c in 置き換えの通す文:
         assert bash(c) == "", c
-    for c in 置き換えの止める文 + ["x/ほか.py replace s1", "echo 'replace 作り物_upload.py"]:
+    for c in 置き換えの止める文 + リダイレクトを挟む止める文[:4] + ["x/ほか.py replace s1", "echo 'replace 作り物_upload.py"]:
         assert '"deny"' in bash(c), c
     assert '"deny"' in _hook(json.dumps({"tool_name": "mcp__x__update_values", "tool_input": {}}), **env).stdout   # 書く道具は今どおり止める
 
@@ -263,10 +307,143 @@ def test_名とタブと見出しは字の揺れをそろえて見る():
         del 本["s5"], 本["s6"]
 
 
-def test_字のそろえ方か守るタブが渡らない口は止める():
-    assert "そろえ方" in j_口(口(字=None), "g__update_values", spreadsheetId="m1", range="A1")
-    assert "守るタブ" in j_口(口(守るタブ=()), "g__update_values", spreadsheetId="L1", range="'月の状況'!A2:A2")
+def 前の入口の口(**kw):
+    """字・守るタブ を渡さない入口（字のそろえ方の前の版の plugin の hook・殻の入口）が組む口。"""
+    base = dict(名の頭たち=場所.名の頭たち(根), 名を引く=名を引く, 見出しを引く=lambda sid, tab: 見出し, 印="作り物の印",
+                置き換える命令=("作り物_upload.py",), 確認ページの形=場所.確認ページの名の形(根))
+    base.update(kw)
+    return W.口(**base)
+
+
+def test_版がずれた入口でも判定は同じ版から字と守るタブを読み_守る物に掛からない命令は通す():
+    # 壊す: 判定が口の 字 だけを見る形だと、字を渡さない前の版の入口と組んだ時に echo まで全部止めた（台帳 束 K-guardver）
+    k = 前の入口の口()
+    for c in ("echo hi", "ls -la", "git status", "python3 -c 'print(\"x\".replace(\"a\",\"b\"))'"):
+        assert W.判定("Bash", {"command": c}, k) is None, c
+    assert "出す物の本" in j_口(k, "Bash", command="python3 x/作り物_upload.py replace s3 a.csv")
+    assert W.判定("Bash", {"command": "python3 x/作り物_upload.py replace m1 a.csv"}, k) is None
+    assert j_口(k, "g__update_values", spreadsheetId="s1", range="A1")
+    本["s5"] = {"name": " 取り込み＿作り物の会社_2099.01支給_v1"}   # 字の揺れも同じ版のそろえ方で照らす
+    try:
+        assert j_口(k, "g__update_values", spreadsheetId="s5", range="A1")
+    finally:
+        del 本["s5"]
+    assert "出荷の欄" in j_口(k, "g__update_values", spreadsheetId="L1", range="'賞与の状況'!F2:F2", values=[["x"]])
+    assert W.判定("g__update_values", {"spreadsheetId": "m1", "range": "A1"}, k) is None
+
+
+def test_判定と同じ版のパックは環境の指すパックでなくこのfileの上から探す(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAYROLL_PACK_DIR", str(tmp_path))   # 別の版（字のそろえ方の無い前の版）を指す環境
+    assert W.自分の版のパック() == 根
+    部品 = W.自分の版の部品()
+    assert 部品["字"].同じ("納　品", "納品") and "月の状況" in 部品["守るタブ"]
+    assert 部品["台帳の名か"]("台帳_2099") and not 部品["台帳の名か"]("台帳_2099_写し")
+
+
+def test_同じ版からも字が読めない時は守る物に掛かる命令だけを止める(monkeypatch):
+    # 壊す: 字が読めない時に何でも止める形だと echo まで止まり窓が動けない／何も止めない形だと置き換えが素通りする
+    monkeypatch.setattr(W, "自分の版の部品", lambda: {})
+    k = 前の入口の口()
+    assert W.判定("Bash", {"command": "echo hi"}, k) is None
+    assert W.判定("Bash", {"command": "echo replace && ls"}, k) is None
+    assert "そろえ方" in j_口(k, "Bash", command="python3 x/作り物_upload.py replace m1 a.csv")
+    assert "そろえ方" in j_口(k, "Bash", command="bash -c '作り物_upload.py re\\place s3'")
+    assert "そろえ方" in j_口(k, "g__update_values", spreadsheetId="m1", range="A1")
+    assert "そろえ方" in j_口(k, "d__create_file", name="ふつうの本")
+    assert W.判定("Read", {"file_path": "x"}, k) is None
+    k2 = 前の入口の口(字=場所.字の口(根), 管理表の名=場所.管理表の名(根), 台帳の名か=場所.台帳の名か(根))   # 守るタブだけ読めない＝管理表への書き込みは止める
+    assert "守るタブ" in j_口(k2, "g__update_values", spreadsheetId="L1", range="'月の状況'!A2:A2")
+
+
+def test_hookは字のそろえ方の無い前の版のパックを指されてもechoを通し置き換えは止める(tmp_path):
+    # 版がずれた入口とパックの組の注入: 環境の指すパックから 芯/字.py を消した複製でも、判定は同じ版から読む
+    import shutil
+    pack = tmp_path / "前の版"
+    shutil.copytree(根, pack, ignore=shutil.ignore_patterns(".git", "__pycache__", "tests"))
+    (pack / "芯" / "字.py").unlink()
+    look = tmp_path / "look.py"
+    look.write_text("import json,sys\nprint(json.dumps({'name':'取り込み_作り物_2099.01支給_v1'}))\n", encoding="utf-8")
+    env = dict(PAYROLL_PACK_DIR=str(pack), PAYROLL_GUARD_LOOKUP_CMD=f"{sys.executable} {look}",
+               PAYROLL_GUARD_REPLACE_CMDS="作り物_upload.py")
+    ok = _hook(json.dumps({"tool_name": "Bash", "tool_input": {"command": "echo hi"}}), **env)
+    assert ok.returncode == 0 and '"deny"' not in ok.stdout, ok.stdout + ok.stderr
+    ng = _hook(json.dumps({"tool_name": "Bash", "tool_input": {"command": "python3 作り物_upload.py replace s1 a.csv"}}), **env)
+    assert '"deny"' in ng.stdout and "出す物の本" in ng.stdout
 
 
 def j_口(k, tool, **args):
     return W.判定(tool, args, k) or ""
+
+
+def test_穴の照らしも環境の指す前の版のパックでなく同じ版から字を読む(tmp_path):
+    # 同じ原因（台帳 束 K-guardver）: 穴の照らしが環境 PAYROLL_PACK_DIR の指す別の版のパックから 芯/字.py を読み、
+    # 字のそろえ方の無い版を指されると照らせず止まった。同じ版（この plugin を含む repo）から読む
+    import shutil
+    pack = tmp_path / "前の版"
+    shutil.copytree(根, pack, ignore=shutil.ignore_patterns(".git", "__pycache__", "tests"))
+    (pack / "芯" / "字.py").unlink()
+    e = {k: v for k, v in os.environ.items() if not k.startswith("PAYROLL_")}
+    e["PAYROLL_PACK_DIR"] = str(pack)
+    r = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); import 穴の照らし as H; "
+                        "print(H._パックの('芯.字').__file__)", str(PLUGIN / "bin")],
+                       capture_output=True, text=True, env=e, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == str(根 / "芯" / "字.py")
+
+
+def test_Bashのリダイレクトの的は語だけ_改行とheredocとプロセス置換の中は前の命令の引数でない():
+    # 壊す: リダイレクトの次の字句を種を問わず的として飛ばす・改行を空白と読む・heredoc の本文を引数と読む形だと止めすぎる
+    for c in ("python3 x/作り物_upload.py > log\necho replace s3",
+              "python3 x/作り物_upload.py >\necho replace s3",
+              "python3 x/作り物_upload.py <<EOF\nreplace s3\nEOF\necho ok",
+              "python3 x/作り物_upload.py <<-'E'\n\treplace s3\n\tE",
+              "python3 x/作り物_upload.py > >(grep replace s3)",
+              "python3 x/作り物_upload.py <(echo replace s3)"):
+        assert j("Bash", command=c) is None, c
+    # heredoc の本文に命令と replace が両方在れば中を読む・行の継ぎは同じ命令・プロセス置換の後の引数は読む
+    for c in ("bash <<EOF\npython3 x/作り物_upload.py replace s3\nEOF",
+              "python3 x/作り物_upload.py \\\nreplace s3",
+              "python3 x/作り物_upload.py >(cat) replace s3"):
+        assert "出す物の本" in (j("Bash", command=c) or ""), c
+
+
+def test_Bashで写す先の数字の後に続くリダイレクトでも置き換えを止める():
+    # 壊す: `>&` の直後の数字を語の頭のリダイレクトの頭と読むと `2>&1>log` が 1 字句の区切りになり後ろを読み落とす
+    for c in ("python3 x/作り物_upload.py 2>&1>log replace s3",
+              "python3 x/作り物_upload.py 2>&1>>log replace s3",
+              "python3 x/作り物_upload.py >&2>log replace s3",
+              "python3 x/作り物_upload.py 2>&1;>log replace s3 ; python3 x/作り物_upload.py replace s3"):
+        assert "出す物の本" in (j("Bash", command=c) or ""), c
+
+
+def test_年の台帳へ道具で直に書くのは止め_関所をBashで呼ぶ道は止めない():
+    # 壊す: 台帳の名を照らさない形だと、窓がシートの道具で年の台帳の値・行・タブを直に書き換えられる
+    for sid in ("T1", "T2"):
+        for tool, a in (("update_values", {"range": "'2099-01'!A2", "values": [["1"]]}),
+                        ("append_values", {"range": "'2099-01'!A1", "values": [["1"]]}),
+                        ("update_formulas", {"range": "'2099-01'!A2", "formulas": [["=1"]]}),
+                        ("batch_clear_values", {"ranges": ["'2099-01'!A2:Z"]}),
+                        ("insert_dimension", {"sheetId": 0}),
+                        ("update_spreadsheet", {"requests": [{"addSheet": {}}]})):
+            assert "年の台帳" in (W.判定("g__" + tool, {"spreadsheetId": sid, **a}, 口()) or ""), (sid, tool)
+    assert "年の台帳" in (j("g__copy_sheet_to_another_spreadsheet", spreadsheetId="m1", destinationSpreadsheetId="T1") or "")
+    assert "年の台帳" in (j("d__create_file", name="台帳_2099", mimeType="application/vnd.google-apps.spreadsheet") or "")
+    assert "年の台帳" in (j("d__copy_file", fileId="m1", name="台帳_2099") or "")
+    assert "年の台帳" in (j("d__copy_file", fileId="T1", name="写し") or "")
+    assert "年の台帳" in (j("d__update_file", fileId="T1", addParents="f9", removeParents="f0") or "")   # 9_履歴へ移す
+    # 置き換える命令（作り物の口）の置き換える先が年の台帳でも止める（出す物の本だけ照らすと通る）
+    for c in ("作り物_upload.py replace T1 a.xlsx", "python3 x/作り物_upload.py replace T2 a.csv"):
+        assert "年の台帳" in (j("Bash", command=c) or ""), c
+    # 台帳の名の形の外（写し・頭付き）は台帳でない＝通す（書く先がほかの守る物でない時）
+    assert j("g__update_values", spreadsheetId="T3", range="'x'!A1", values=[["1"]]) is None
+    assert j("d__create_file", name="頭_台帳_2099") is None
+    # 決まった口（殻の *_gate.py）は Bash の python で書く手順を当てる＝止めない
+    for c in ("python3 agents/kyuyo/bin/daicho_gate.py --year 2099 --apply",
+              "python3 agents/kyuyo/bin/ship_gate.py replace s9 a.csv"):
+        assert j("Bash", command=c) is None, c
+
+
+def test_台帳の名の形を渡さない前の入口でも同じ版から読んで台帳を止める():
+    k = 前の入口の口()
+    assert "年の台帳" in j_口(k, "g__update_values", spreadsheetId="T1", range="'2099-01'!A2", values=[["1"]])
+    assert W.判定("g__update_values", {"spreadsheetId": "m1", "range": "'x'!A1", "values": [["1"]]}, k) is None

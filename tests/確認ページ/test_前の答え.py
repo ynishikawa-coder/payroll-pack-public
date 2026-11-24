@@ -119,17 +119,18 @@ def test_値の表の命令が_qa_prior_1_を受けて_answered_と_checked_を�
     入 = {"format": "qa-prior/1", "questions": [
         {"key": P.鍵("Q209901-01"), "label": "", "question": "休憩の境", "about": [], "known": [], "group": "", "kind": ""},
         {"key": "q2", "label": "", "question": "残業の上限はありますか", "about": [], "known": [], "group": "", "kind": ""}]}
+    # check.mjs は値の表の repo の根（パックの根）で命令を走らせる。環境の PAYROLL_PACK_DIR が無い dir を指していても
+    # （窓の環境が古い marketplace の場所を持つ時・2026-11-24 に起きた）道具はパックの根から引く
     env = {**os.environ, "PAYROLL_QA_ROWS": _表(tmp_path, [HEAD, *ROWS]), "PAYROLL_QA_COMPANY": "作り物の会社",
-           "PAYROLL_PACK_DIR": str(根)}
-    # 窓の repo（パックの外）の根で走っても PAYROLL_PACK_DIR でパックの口を引く（check.mjs は窓の今の dir で命令を走らせる）
-    r = subprocess.run(cmd, shell=True, cwd=tmp_path, input=json.dumps(入, ensure_ascii=False), text=True,
+           "PAYROLL_PACK_DIR": str(tmp_path / "無いパックの場所")}
+    r = subprocess.run(cmd, shell=True, cwd=根, input=json.dumps(入, ensure_ascii=False), text=True,
                        capture_output=True, env=env, timeout=60)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
     assert set(out["answered"]) == {P.鍵("Q209901-01")} and set(out["checked"]) == {"q2"}
     # 表が渡されなければ 0 で終わらない（check.mjs が「命令が落ちた」で赤にする）
     env.pop("PAYROLL_QA_ROWS")
-    r = subprocess.run(cmd, shell=True, cwd=tmp_path, input=json.dumps(入), text=True, capture_output=True, env=env, timeout=60)
+    r = subprocess.run(cmd, shell=True, cwd=根, input=json.dumps(入), text=True, capture_output=True, env=env, timeout=60)
     assert r.returncode == 2 and r.stdout == ""
 
 

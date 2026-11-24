@@ -23,9 +23,10 @@ def _読む(path: Path, 名: str):
 
 設問 = _読む(根 / "初期設定" / "設問.py", "照らし_試験_設問")
 確認 = _読む(根 / "確認ページ" / "確認ページ.py", "照らし_試験_確認ページ")
-読んだ = [{"名": "横.csv", "url": "https://drive.example.invalid/d/1"},
-        {"名": "縦.xlsx", "url": "https://drive.example.invalid/d/2"},
-        {"名": "明細.xlsx", "url": "https://drive.example.invalid/d/3"}]
+原本の箱 = "10_会社/作り物の組/3_月ごと/2099.04支給（3月分）/1_届いた物"   # 受け取った原本の箱（url はこの箱の物だけ）
+読んだ = [{"名": "横.csv", "url": "https://drive.example.invalid/d/1", "置き場": 原本の箱},
+        {"名": "縦.xlsx", "url": "https://drive.example.invalid/d/2", "置き場": 原本の箱},
+        {"名": "明細.xlsx", "url": "https://drive.example.invalid/d/3", "置き場": 原本の箱}]
 
 
 def _照らす():
