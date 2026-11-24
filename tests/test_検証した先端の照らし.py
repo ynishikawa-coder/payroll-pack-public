@@ -121,4 +121,4 @@ def test_workflowは照らしを呼び_止めず_本文をshellの字へ差し�
     assert "pull_request.body" not in wf          # 本文は file で渡す（字の差し込みで命令にならない）
     assert "conclusion=failure" not in wf and "exit 1" not in wf   # 止めない
     for 契機 in ("pull_request_target:", "edited", "synchronize", "push:"):
-        assert 契機 in wf, 契機                    # 本文を直した時・枝が進んだ時に照らし直す
+        assert 契機 in wf, 契機                    # 本文を直した時・main が進んだ時に照らし直す

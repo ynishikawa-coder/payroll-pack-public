@@ -35,7 +35,7 @@
 | `出口/` | 明細・連携の形へ出す |
 | `確認ページ/` | 確認ページ（初回と毎月の確認の HTML・qa-html の 1 つの型の写し・名と版・答え qa-html/2 の貼り戻し） |
 | `config/skill-values.json` | 土台の skill に渡す給与のパックの値（qa-html の なぜ聞くか の文を給与の語に・確認ページ.py も読む） |
-| `.github/workflows/verify-base.yml` | 検証の鮮度: PR 本文の `検証した base の先端:` を今の base の先端と照らし、PR の先端がそれを含むか（compare）も見て、違えば PR のチェックの表示で知らせる（止めない・枝が進んだ時はその枝を base にする開いた PR を照らし直す） |
+| `.github/workflows/verify-base.yml` | 検証の鮮度: PR 本文の `検証した base の先端:` を今の base の先端と照らし、PR の先端がそれを含むか（compare）も見て、違えば PR のチェックの表示で知らせる（止めない・main が進んだ時は main を base にする開いた PR を照らし直す・main 以外の枝の push では走らない） |
 | `scripts/検証した先端の照らし.py` | 検証の鮮度の照らしの正本（欄の名と形・本文と先端と含むか → success／neutral と訳） |
 | `scripts/取り込みの照らし.py` | 枝の取り込み（merge の commit）が片側の行を黙って落としていないかを照らす（片側から消えた行は、相手の枝が分かれ目から消した行でなければ赤・わざと捨てた file は commit の文に `取り込みで捨てた行: <path>`。CI は試験が PR の枝の origin/main..HEAD を回す） |
 | `.github/workflows/土台の版.json` | 土台（agent-foundation-public）を読む版の印の正本（ci.yml・tag.yml・public-mirror.yml が直に読む・`docs/版の出し方.md`） |

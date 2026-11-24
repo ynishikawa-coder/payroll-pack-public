@@ -20,7 +20,7 @@ from 芯 import 字  # noqa: E402  (字のそろえ方の正本)
 from 芯 import 支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
 from 芯.計算 import 引く口  # noqa: E402  (法の表を引く口は 1 つ)
 from 芯.計算 import 承知 as 承知の印  # noqa: E402  (法の線.承知 の読み方の正本)
-from 芯.計算.形 import 区分を読む  # noqa: E402
+from 芯.計算.形 import 給与の部品  # noqa: E402  (区分→部品の正本)
 
 import importlib.util  # noqa: E402
 
@@ -34,9 +34,10 @@ _spec.loader.exec_module(型の口)   # 質問と回答「誰に」の字の正�
 
 
 def _有給の外か(区分) -> bool:
-    """役員を含む区分（役員＋委託の併用 も＝雇用の分が無い）と委託だけの人は有給の外。委託の併用は雇用分があるので入る。"""
-    部 = 区分を読む(区分) or frozenset()
-    return "役員" in 部 or 部 == frozenset({"委託"})
+    """雇用の部品が無い人（役員だけ・役員＋委託の併用・委託だけ）は有給の外。兼務役員・委託の併用は雇用分があるので入る。
+    読めない区分は外にしない（今までどおり）。"""
+    品 = 給与の部品({"人.区分": 区分})
+    return 品 is not None and "雇用" not in 品
 
 
 def 法の表(基準の日=None, 置き場=None) -> dict:

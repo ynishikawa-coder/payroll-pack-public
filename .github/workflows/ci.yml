@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# 同じ PR に次の push が来たら、その PR の古い実行を取り消す（古い先端の結果は要らない・走り切ると Actions の分を払う）。
+# main への push は 1 回ずつ別の group（run_id）＝取り消しも順番待ちの差し替えも起きない。
+# tag.yml が workflow_run で main の各 commit の ci の完了を待つので、main の実行は消さない。
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
