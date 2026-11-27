@@ -269,7 +269,7 @@ def test_分からない訳は直し方を両方言う():
 
 
 def test_照らしの道具と見張りの知らせは分からない訳を使う(tmp_path, monkeypatch):
-    """パックの場所が分からない時、出す前の照らし・オーナーへの文の照らし・書く道具の見張りの知らせに直し方の両方が入る。"""
+    """パックの場所が分からない時、出す前の照らし・オーナーへの文の照らし・見張りの問いの知らせに直し方の両方が入る。"""
     import subprocess
     import sys
     monkeypatch.delenv("PAYROLL_PACK_DIR", raising=False)
@@ -285,22 +285,22 @@ def test_照らしの道具と見張りの知らせは分からない訳を使�
     assert "入れ直す" in r.stdout and "PAYROLL_PACK_DIR" in r.stdout and 渡した in r.stdout
     import os
     env = dict(os.environ, PAYROLL_PACK_DIR=str(tmp_path))
-    ev = {"tool_name": "mcp__x__update_values", "tool_input": {"spreadsheetId": "s3", "range": "'a'!A1"}}
+    ev = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [
+        {"question": "Q202611-67 に答えて", "header": "x", "multiSelect": False,
+         "options": [{"label": "a", "description": "b"}, {"label": "c", "description": "d"}]}]}}
     r = subprocess.run([sys.executable, str(PLUGIN / "hooks" / "見張り.py")], input=json.dumps(ev, ensure_ascii=False),
                        capture_output=True, text=True, env=env, timeout=60)
-    deny = json.loads(r.stdout)["hookSpecificOutput"]
-    assert deny["permissionDecision"] == "deny" and "入れ直す" in deny["permissionDecisionReason"]
-    assert "PAYROLL_PACK_DIR" in deny["permissionDecisionReason"] and 渡した in deny["permissionDecisionReason"]
+    知らせ = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "入れ直す" in 知らせ and "PAYROLL_PACK_DIR" in 知らせ and 渡した in 知らせ
 
 
 def test_知らせの文を道具に写さない():
-    """「plugin payroll-agent を入れ直す」の文はパックの場所.py の 1 か所だけに在る（2 つの道具と見張りは呼ぶだけ）。"""
+    """「plugin payroll-agent を入れ直す」の文はパックの場所.py の 1 か所だけに在る（2 つの道具は呼ぶだけ・見張りはオーナーへの文の照らしを通す）。"""
     文 = "plugin payroll-agent を入れ直す"
     在る = [f.name for f in [*(PLUGIN / "bin").glob("*.py"), *(PLUGIN / "hooks").glob("*.py")] if 文 in f.read_text(encoding="utf-8")]
     assert 在る == ["パックの場所.py"]
     for f in ("出す前の照らし.py", "オーナーへの文の照らし.py"):
         assert "分からない訳" in (PLUGIN / "bin" / f).read_text(encoding="utf-8"), f
-    assert "分からない訳" in (PLUGIN / "hooks" / "見張り.py").read_text(encoding="utf-8")
 
 
 def test_全角や幅の無い字で書いた番号と語と印も同じ字で照らす():
