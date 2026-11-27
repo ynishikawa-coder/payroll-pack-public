@@ -41,8 +41,11 @@ def 読む(連絡たち: list[dict], 文脈, 項目の辞書: dict | None = None
                 m.事実["時刻の無い休憩"] = str(v)
         for k in ("振替の相手の日", "代休の相手の日"):
             if c.get(k):
-                x = 口.日付を決める(c[k], 文脈) or str(c[k]).strip()
-                m.事実[k] = x
+                x = 口.相手の日を決める(c[k], 文脈)
+                if x is None:   # 字のまま置くと台帳の日付の列で止まる＝要確認に残す
+                    m.理由.append(f"{k}「{c[k]}」が日付に読めない")
+                else:
+                    m.事実[k] = x
         if c.get("備考"):
             m.備考.append(str(c["備考"]))
         材料たち.append(m)
