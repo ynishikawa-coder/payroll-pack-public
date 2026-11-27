@@ -7,7 +7,7 @@
     {
       "name": "payroll-agent",
       "source": "./plugins/payroll-agent",
-      "description": "給与エージェントの部分（毎月の手順・守る決まり・照らし）。各社の側は口の一覧（plugins/payroll-agent/口の一覧.md）の口だけを満たす。"
+      "description": "給与エージェントの部分（毎月の手順・守る決まり・照らし）。パックは Drive の口を持ち、出荷・締め・寄せはパックの命令。各社の側は鍵と置き場の根の id を環境から渡し、口の一覧（plugins/payroll-agent/口の一覧.md）の口を満たす。"
     }
   ]
 }

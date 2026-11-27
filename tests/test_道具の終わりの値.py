@@ -171,7 +171,7 @@ sys.stdin = _壊れた入力()
 
 # 8. 給与の見張りの hook plugins/payroll-agent/hooks/見張り.py（決定の 7 つの外・同じ原因の台帳の行）
 # PreToolUse の hook は終わりの値 1 を「止めない誤り」として道具の呼び出しを通す＝落ちた回が黙って通る。
-# 見る道具（書く道具）で落ちたら止める（deny）・選択肢の画面の照らしと判定そのものが読めない時は止めずに「壊れた」と知らせる。
+# 見る道具（GitHub の道具と add_repo）で入力が読めなければ止める（deny）・選択肢の画面の照らしが落ちた時は止めずに「壊れた」と知らせる。
 def _部品を壊す(名: str, 読めない: bool = False) -> str:
     if 読めない:   # import そのものが落ちる
         return f"import sys\nsys.modules[{名!r}] = None\n"
@@ -183,23 +183,20 @@ def _部品を壊す(名: str, 読めない: bool = False) -> str:
 
 def test_見張りのhook_落ちても1で通さない():
     道具 = str(根 / "plugins" / "payroll-agent" / "hooks" / "見張り.py")
-    書く = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
+    書く = json.dumps({"tool_name": "mcp__github__push_files", "tool_input": {"repo": "payroll-pack"}})
     問い = json.dumps({"tool_name": "AskUserQuestion", "tool_input": {"questions": []}})
     読む = json.dumps({"tool_name": "Read", "tool_input": {}})
     env = {"PAYROLL_PACK_DIR": str(根)}
-    # パックの場所を探す手が落ちた: 見る道具は止める（前は try の外で 1＝通した）
     for 前置き in (_部品を壊す("パックの場所"), _部品を壊す("パックの場所", 読めない=True)):
+        # repo の見張りはパックの場所に頼らない: 部品が落ちてもパックの repo は止める
         r = _回す(前置き, 道具, [], 入力=書く, env=env)
-        assert r.returncode == 0 and '"deny"' in r.stdout and "見張りが壊れた" in r.stdout, (r.returncode, r.stdout, r.stderr)
+        assert r.returncode == 0 and '"deny"' in r.stdout, (r.returncode, r.stdout, r.stderr)
         # 選択肢の画面の照らしが落ちた: 止めずに、照らしていないと知らせる
         r = _回す(前置き, 道具, [], 入力=問い, env=env)
         assert r.returncode == 0 and "additionalContext" in r.stdout and "見張りが壊れた" in r.stdout, (r.returncode, r.stdout, r.stderr)
         # 見ない道具は今どおり何もしない
         r = _回す(前置き, 道具, [], 入力=読む, env=env)
         assert r.returncode == 0 and r.stdout == "", (r.returncode, r.stdout, r.stderr)
-    # 判定そのもの（止める見張り）が読めない: 止めずに壊れたと知らせる（1 で黙って通さない）
-    r = _回す(_部品を壊す("止める見張り", 読めない=True), 道具, [], 入力=書く, env=env)
-    assert r.returncode == 0 and "additionalContext" in r.stdout and "見張りが壊れた" in r.stdout, (r.returncode, r.stdout, r.stderr)
     # 捕まえ残し（知らせる手そのものが落ちる）は 2＝Claude Code が止める
     r = _回す("import json\n_元 = json.dumps\ndef _壊す(*a, **k):\n    raise RuntimeError('注入した故障')\njson.dumps = _壊す\n",
             道具, [], 入力="JSON でない入力", env=env)   # 読めない入力＝止める道（_拒む）で知らせる手が落ちる
