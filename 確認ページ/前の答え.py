@@ -64,12 +64,6 @@ from 芯 import 字 as _字  # noqa: E402  字のそろえ方の正本（答え�
 見出しを探す行 = 5
 
 
-def _マスタの名() -> str:
-    """マスタのシートの名（正本は 初期設定/型.json・写さない）。"""
-    from 初期設定 import 型の口
-    return 型の口.名("マスタ")
-
-
 def 決まり切らない(回答) -> bool:
     """答えの字が 分からない・不明・確かめる など決まり切らない答えか（答え済みに数えず、詰め直しの元にする）。
     頭だけでなく字の中を、字の揺れをそろえて見る（「まだ分からない」「今は不明」も決まり切らない＝聞き直しを止めない側）。"""
@@ -160,32 +154,36 @@ def 決まり切らない行(行たち: list[dict]) -> dict[str, list[dict]]:
 def 設定の項目(字: str) -> set[str]:
     """反映先・答えで変わる項目の字から、2_マスタ の設定の項目の名を取り出す（`2_マスタ/会社/時間.始業前の打刻・休憩の表` →
     {始業前の打刻, 休憩の表}）。項目の頭の分け（時間. など）は外す。md の節（`給与のルール.md#遅刻`）は `<md の名>#<見出し>` の
-    1 つの項目に数える（md で決まった事も前の答えとして閉じる・2026-11-24）。見出しの無い md の名だけ・台帳（台帳/）は数えない（広すぎる）。"""
+    1 つの項目に数える（md で決まった事も前の答えとして閉じる・2026-11-24）。見出しの無い md の名だけ・台帳（台帳/）は数えない（広すぎる）。
+    反映先の片の読み（md か・マスタのどのタブのどの項目か）は 型の口.反映先を読む。ここが足すのは、答えで変わる項目と人 も読む
+    区切り（・ ; \n ，）と、マスタの片の後ろに続く裸の名を同じタブの項目に数える事だけ。型に無いタブの片は数えない。"""
+    from 初期設定 import 型の口
     out: set[str] = set()
     in_master = False
-    for part in re.split(r"[・、,，;；\n]", str(字 or "")):
-        part = part.strip()
-        if not part:
-            continue
-        if ".md" in part:   # 決まりの md ＝ここで 2_マスタ の続きも切る。節まで指す時だけ項目に数える
-            in_master = False
-            名, _, 見出し = part.partition("#")
-            名, 見出し = 名.strip().split("/")[-1], 見出し.strip()
-            if 名.endswith(".md") and 見出し:
-                out.add(f"{名}#{見出し}")
-            continue
-        if "/" in part:
-            in_master = f"{_マスタの名()}/" in part
-            if not in_master:
+    for part in re.split(r"[・;；\n，]", str(字 or "")):
+        for 片 in 型の口.反映先を読む(part):
+            if 片.種 == "md":   # 決まりの md ＝ここで 2_マスタ の続きも切る。節まで指す時だけ項目に数える
+                in_master = False
+                if 片.md_の名.endswith(".md") and 片.乙:
+                    out.add(型の口.md_の節の反映先(片.md_の名, 片.乙))
                 continue
-            seg = [s for s in part.split("/") if s]
-            item = seg[-1] if len(seg) >= 3 else ""
-        else:
-            item = part if in_master else ""
-        item = re.sub(r"[（(].*$", "", item).split(".")[-1].strip()
-        if len(item) >= 3:
-            out.add(item)
+            if 片.種 == "マスタ":
+                in_master = True
+                item = 片.乙.rsplit("/", 1)[-1]
+            elif 片.種 == "知らないタブ" or "/" in 片.字:
+                in_master = False
+                continue
+            else:
+                item = 片.字 if in_master else ""
+            _項目を足す(out, item)
     return out
+
+
+def _項目を足す(out: set, item: str) -> None:
+    """項目の字 → 頭の分け（時間. など）と括弧の後を外した名（3 字以上だけ）を out へ。"""
+    item = re.sub(r"[（(].*$", "", item).split(".")[-1].strip()
+    if len(item) >= 3:
+        out.add(item)
 
 
 def 含み(新: str, 前: str) -> float:

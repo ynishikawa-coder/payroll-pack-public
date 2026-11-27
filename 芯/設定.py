@@ -20,7 +20,11 @@ from pathlib import Path
 
 表の置き場 = Path(__file__).resolve().parent / "設定の表.json"
 照らす形 = ("選ぶ", "端数の語", "区分", "組", "休憩の表")
-内の鍵 = ("勤務の型", "見当の値")   # 段の解決が作る内の鍵（会社の決まりの名でない）
+# 段の解決.解く が 決まり・人 に作る内の鍵（芯/設定の表.json の名でない）。名の正本はここ 1 か所（段の解決・試験はここから引く）
+内の鍵 = ("勤務の型", "項目.人の額", "項目.行", "見当の値")
+# 芯が 決まり の `見当の値` から読む名（芯/集計/日.py＝定時扱いの日を仮にする）。段の解決.解く はこの名だけを 見当の値 に出し、
+# ほかの名が出たら止める（芯が読まない名の見当はその人を仮にしない＝見当のまま出口へ出る道になる）
+見当を読む名 = ("時間.日の所定",)
 
 
 class 表に無い名(KeyError):
@@ -202,6 +206,53 @@ def 支給の月のずれ() -> dict[str, int]:
     if any(type(v) is not int or not 0 <= v <= 11 for v in ずれ.values()) or len(set(ずれ.values())) != len(ずれ):
         raise ValueError(f"芯/設定の表.json の 支払.支給の月 の 月のずれ は 0〜11 の重ならない整数: {ずれ!r}")
     return {k: ずれ[k] for k in e["選べる値"]}
+
+
+# 段の解決.解く がセルの字を芯の読む形へ直す変え方（表の行の `段の直し`）。語の正本はここ、どの名をどう直すかの正本は表 1 か所
+#（段の解決・試験はここから引く）
+段の直しの語 = ("時間の数", "時間の数（割り切れなくてよい）", "分の数", "字のそろえ", "日のそろえ")
+
+
+def 段の直し(*語: str) -> tuple[str, ...]:
+    """表の `段の直し` が 語 のどれかの名（表の並び）。表か 語 に 段の直しの語 の外の語が在れば止める（黙って直さずに渡さない）。"""
+    外 = sorted(({e["段の直し"] for e in 表().values() if "段の直し" in e} | set(語)) - set(段の直しの語))
+    if 外:
+        raise ValueError(f"芯/設定の表.json の 段の直し の語は {'・'.join(段の直しの語)} のどれか: {外}")
+    return tuple(n for n, e in 表().items() if e.get("段の直し") in 語)
+
+
+# ---- まとめる元（段の解決.解く が社員のいくつかの列を 1 つの鍵の {中の名: 値} にまとめ、芯/計算 が支給月で中の名を 1 つ選ぶ）----
+
+def 中の名(列: str) -> str:
+    """まとめる元の列の名 → まとめた鍵の中の名（列の名を「.」で割った後ろ。`住民税.6月分`→`6月分`）。"""
+    return 列.split(".", 1)[1]
+
+
+def _まとめる元(名: str) -> list[dict]:
+    """名 の `まとめる元`。列は「.」を持ち、支給月は 1〜12 の重ならない整数の並びか ほかの月（ちょうど 1 つ）でなければ止める。"""
+    元 = (名を確かめる(名) or {}).get("まとめる元")
+    並び = 元 if isinstance(元, list) else []
+    月たち = [m for x in 並び if isinstance(x, dict) and isinstance(x.get("支給月"), list) for m in x["支給月"]]
+    if not (並び and all(isinstance(x, dict) and "." in str(x.get("列", "")) for x in 並び)
+            and sum(1 for x in 並び if x.get("支給月") == "ほかの月") == 1
+            and all(x.get("支給月") == "ほかの月" or isinstance(x.get("支給月"), list) for x in 並び)
+            and all(type(m) is int and 1 <= m <= 12 for m in 月たち) and len(set(月たち)) == len(月たち)):
+        raise ValueError(f"芯/設定の表.json の {名} の まとめる元 は "
+                         f'[{{"列": "分野.名", "支給月": [月の数] か "ほかの月"}}, …]（ほかの月 はちょうど 1 つ）: {元!r}')
+    return 並び
+
+
+def まとめる元() -> dict[str, tuple[str, ...]]:
+    """まとめて作る鍵 → 元の列の名の並び（表の行の `まとめる元` の 1 か所）。"""
+    return {n: tuple(x["列"] for x in _まとめる元(n)) for n, e in 表().items() if e.get("まとめる元")}
+
+
+def まとめた中の名(名: str, 月: int) -> str:
+    """まとめた鍵 名 の中の名のうち、支給月の月 月 に選ぶ物（月の並びに 月 が在る列、無ければ ほかの月 の列）。"""
+    元 = _まとめる元(名)
+    x = next((x for x in 元 if isinstance(x["支給月"], list) and 月 in x["支給月"]), None) or \
+        next(x for x in 元 if x["支給月"] == "ほかの月")
+    return 中の名(x["列"])
 
 
 def 選べる値の字か(名: str, v) -> bool:

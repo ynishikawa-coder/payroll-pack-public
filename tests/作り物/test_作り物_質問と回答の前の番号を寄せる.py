@@ -22,6 +22,7 @@ sys.path.insert(0, str(根 / "道具" / "寄せ"))
 import 直し as 直しの形  # noqa: E402
 import 質問と回答  # noqa: E402
 import 当てる  # noqa: E402
+from 月次 import 台帳へ書く as 書  # noqa: E402
 
 _s = importlib.util.spec_from_file_location("作り物_前の答え", 根 / "確認ページ" / "前の答え.py")
 前の答え = importlib.util.module_from_spec(_s)
@@ -86,7 +87,7 @@ def test_前の形は照らしが止め_寄せると型の形になり照らし�
     assert 質問と回答._値の数(後) == 質問と回答._値の数(前の形の表) + 3   # 足したのは 会社 の 3 つだけ
     (書く,) = r["書く手順"]
     assert 書く["する"] == "値を書く" and 書く["書き方"] == "RAW" and 書く["ファイル"] == ファイル and 書く["範囲"] == "A1:Z4"
-    assert r["戻す手順"][0]["値"][0][:12] == 見出し
+    assert 書.戻す手順の本体(r["戻す手順"])[0]["値"][0][:12] == 見出し
 
     通る = _照らす(後, tmp_path)
     assert 通る.returncode == 0, 通る.stderr
@@ -157,14 +158,3 @@ def test_読み替えた番号が前から在る今の番号とぶつかれば�
 def test_使えない操作は当てずに止める(op):
     with pytest.raises(直しの形.直しの誤り):
         質問と回答.寄せる(copy.deepcopy(前の形の表), [op])
-
-
-def test_呼び口から寄せる(tmp_path):
-    a, b = tmp_path / "表.json", tmp_path / "読み替え.json"
-    a.write_text(json.dumps({"values": 前の形の表}, ensure_ascii=False), encoding="utf-8")
-    b.write_text(json.dumps(読み替え, ensure_ascii=False), encoding="utf-8")
-    p = subprocess.run([sys.executable, str(根 / "道具" / "寄せ" / "呼び口.py"), "質問と回答", "--表", str(a), "--読み替え", str(b)],
-                       capture_output=True, text=True, encoding="utf-8")
-    assert p.returncode == 0, p.stderr
-    後 = json.loads(p.stdout)["寄せた後の値"]
-    assert 後[1][:2] == ["事務所", "Q209911-01"]

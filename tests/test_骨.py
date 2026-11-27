@@ -418,7 +418,9 @@ def 枝の名と違う断片(枝: str, 足した: list[str]) -> list[str]:
 def _足した断片() -> list[str] | None:
     def git(*a):
         return subprocess.run(["git", "-C", str(根), "-c", "core.quotepath=off", *a], capture_output=True, text=True, check=True).stdout
-    for ref in ("origin/main", "main"):
+    # PR の向き先（GITHUB_BASE_REF）から数える。作業の枝へ向ける PR は、向き先の枝が main から足した断片を自分の物と数えない。
+    向き先 = os.environ.get("GITHUB_BASE_REF")
+    for ref in ((f"origin/{向き先}",) if 向き先 else ()) + ("origin/main", "main"):
         try:
             基 = git("merge-base", "HEAD", ref).strip()
         except (subprocess.CalledProcessError, FileNotFoundError):

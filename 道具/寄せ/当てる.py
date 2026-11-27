@@ -43,6 +43,8 @@ if _根 not in _sys.path:
 from 芯 import 設定 as _設定  # noqa: E402
 from 芯 import 支給月の字 as _支給月の字  # noqa: E402  (支給月の字の読み書きの正本)
 from 芯 import 字 as _字  # noqa: E402  (字のそろえ方の正本＝見出し・値の語はそろえて照らす)
+from 初期設定 import 設問 as _設問  # noqa: E402  (問いを閉じた回答の頭 閉じた頭 の正本)
+from 月次 import 台帳へ書く as _書  # noqa: E402  (戻す手順を組む 1 か所＝頭の 形を照らす を置く。寄せる道具.md §1.7)
 
 
 def 台帳の形():
@@ -238,17 +240,49 @@ class 物:
         self.部品 = list(d.get("選んだ部品", []))
         self.シート = {f: {t: そろえる(v) for t, v in tabs.items()} for f, tabs in d.get("シート", {}).items()}
         self.式 = {(f, t, int(r), int(c)) for f, tabs in d.get("式", {}).items() for t, cells in tabs.items() for r, c in cells}
-        self.md = dict(d.get("md", {}))
+        # md は 2 つに分けて持つ（分ける線の正本はここ＝履歴の物か・置き場の名は型の口の「履歴」）:
+        #   md: 直す md（直しが読み替え・書く手順が移して作り直す物）／履歴のmd: 9_履歴/ の写し（寄せの外＝直さず移さず作らない。
+        #   写しから戻す が元の md として読み、出す で Drive に在るままを返すだけ）。名を移す が移した後の名で分け直す。
+        # 原因（2026-11-27）: 写しも直す md に入れていたので、書きかけで止めた後の寄せ直しが写しを「型の外の md・前の名の md」
+        # として直し（出所の行を書き換え）、9_履歴/消す_…_9_履歴_消す_… へもう一度移した＝§1.7 の戻す手順が当たらなくなった
+        self.md, self.履歴のmd = dict(d.get("md", {})), {}
         self.置き場 = list(d.get("置き場", []))
+        self._mdを分け直す()
+        # 事務所の設定「置き場」の登録（Drive の型 §8）: 顧客ID と、今の行 {物: ID}。寄せが置き場の物を移した時に
+        # 「置き場の行を書く」を出し、戻す手順で前の ID へ書き戻すのに使う（無ければ空＝殻が会社の一覧から引く）
+        self.顧客ID = str(d.get("顧客ID", "") or "").strip()
+        self.置き場の行 = {str(k): str(v) for k, v in dict(d.get("置き場の行", {}) or {}).items()}
+        # 鍵 置き場の行 が入力に在るか（{} は「その会社の行が 1 つも無い」と読める・鍵が無い＝行が在るか分からない）。
+        # 無いまま置き場の物を移すと戻す手順が元から在る行を消してしまう＝移す寄せを拒む（置き場の行が分からない）
+        self.置き場の行がある = d.get("置き場の行") is not None
         # 寄せの写しの置き場は 9_履歴/ の 1 つ（README）。前の答えの語「99_ へ写して消す」も同じ意味で受ける
         答え = dict(d.get("人の答え", {}))
         self.前の形 = 答え.pop(前の形の鍵, [])  # 事務所が渡す前の形の読み替え（前の形を足す）。問いの鍵ではない
         self.人の答え = {k: (v.replace("99_ へ写して消す", "9_履歴 へ写して消す") if isinstance(v, str) else v)
                       for k, v in 答え.items()}
 
+    def _mdを分け直す(self) -> None:
+        """9_履歴/ の下の md を 履歴のmd へ、外の md を md へ（並びは保つ）。md を分ける線はこの 1 か所。"""
+        for k in [k for k in self.md if 履歴の物か(k)]:
+            self.履歴のmd[k] = self.md.pop(k)
+        for k in [k for k in self.履歴のmd if not 履歴の物か(k)]:
+            self.md[k] = self.履歴のmd.pop(k)
+
+    def 名を移す(self, 前: str, 後: str) -> None:
+        """名 前 の物（/ で終わる名はフォルダ＝中の物ごと）を 後 へ移す。シート・md・置き場・式を同じ 1 手で動かし、
+        md は移した後の名で分け直す（9_履歴/ へ移した md は直す md から外れる）。"""
+        def 当たる(x):
+            return x == 前 or (前.endswith("/") and x.startswith(前))
+        for d in (self.シート, self.md, self.履歴のmd):
+            for k in [k for k in d if 当たる(k)]:
+                d[後 + k[len(前):]] = d.pop(k)
+        self._mdを分け直す()
+        self.置き場 = [後 + x[len(前):] if 当たる(x) else x for x in self.置き場]
+        self.式 = {((後 + f[len(前):]) if 当たる(f) else f, t, r, c) for f, t, r, c in self.式}
+
     def 出す(self) -> dict:
         return {"会社": self.会社, "型の版": self.版, "選んだ部品": self.部品,
-                "シート": copy.deepcopy(self.シート), "md": dict(self.md), "置き場": list(self.置き場)}
+                "シート": copy.deepcopy(self.シート), "md": {**self.md, **self.履歴のmd}, "置き場": list(self.置き場)}
 
 
 def 数える(シート: dict) -> int:
@@ -477,6 +511,9 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
     if する == "前の置き場を止める":  # 見通すの頭で照らした（前の名の置き場が在れば何も当てずに止まる）
         return
 
+    if する == "月の変動を写す":  # 写すのは 計算の形 の 11（寄せるたび）。この操作は 11 を通った版の印だけ
+        return
+
     if する == "file を置き場へ移す":
         前, 後 = op["前"], op["後"]
         在る前 = any(x == 前 or x.startswith(前) for x in o.置き場) if 前.endswith("/") else 前 in o.置き場
@@ -486,12 +523,9 @@ def 当てる操作(o: 物, op: dict, K: dict, 記: 記録, 版: int, 番: int, 
         if 在る後:
             記.出せない(f"置き場:{前}→{後}", "ぶつかり", 前, f"{前} と {後} の両方が在る", ["中身を照らして 1 つにする（人）"])
             return
-        o.置き場 = [後 + x[len(前):] if (x == 前 or (前.endswith("/") and x.startswith(前))) else x for x in o.置き場]
-        for d in (o.シート, o.md):
-            for k in list(d):
-                if k == 前 or (前.endswith("/") and k.startswith(前)):
-                    d[後 + k[len(前):]] = d.pop(k)
-        o.式 = {((後 + f[len(前):]) if (f == 前 or (前.endswith("/") and f.startswith(前))) else f, t, r, c) for f, t, r, c in o.式}
+        if 置き場の行が分からない(o, 前, 後, 記):
+            return
+        o.名を移す(前, 後)
         記.移した.append((前, 後))
         記.当てた.append((版, 番, する, f"{前}→{後}"))
         return
@@ -1046,6 +1080,131 @@ def 選べる値の文(名: str) -> str:
     return {"休憩の表": "`12:00〜13:00`・`6:00超45分`・`退勤18:00超30分`"}.get(e["形"], e["形"])
 
 
+def 表の外を照らす(o: 物, K: dict, 記: 記録, 手がかり: dict):
+    """型のタブの全部のセルを、芯/設定の表.json の選べる値で照らす（寄せる道具.md §4.5）。型の形に合っても選べる値の外の字
+    （前の語「打刻から」「時間給」など）は黙って通さない（通せば芯が読めず既定で数えるか、その人を止める）。
+    照らす・実働の丸めが値を動かした後に 1 回だけ（同じセルを先の問いが問うていれば重ねない）。"""
+    for f in sorted(o.シート):
+        tk = 型のファイル(K, f)
+        if tk is None:
+            continue
+        for t, rows in o.シート[f].items():
+            if t.startswith(旧の頭) or (f, t) in 記.待つタブ or t not in tk or not rows:
+                continue
+            for c in tk[t]:
+                k = 列の番号(rows, c["名"])
+                if k is None:
+                    continue
+                for r in range(1, len(rows)):
+                    if k < len(rows[r]) and not 空か(rows[r][k]):
+                        表の外を問う(o, rows, r, k, c["名"], f"{f}/{t}", t, 記, 手がかり)
+
+
+def 表の外を問う(o: 物, rows: list, r: int, k: int, 列: str, where: str, t: str, 記: 記録, 手がかり: dict):
+    """照らすの 1 つのセル: 型の形に合う値でも、芯/設定の表.json の選べる値の外の字なら問いにする（寄せる道具.md §4.5）。
+    値をそろえるが同じセルを問うていれば重ねない（そちらの答えで解く）。答えの値も選べる値の外なら書かない。"""
+    v = str(rows[r][k]).strip()
+    外 = 表の外の字(rows, r, {"列": 列}, v)
+    if 外 is None:
+        return
+    名 = 行の名(rows, r)
+    if any(x["鍵"].startswith(f"{where}/{頭}:{列}") and x["鍵"].endswith(f"/{名}")
+           for x in 記.寄せられない for 頭 in ("そろえる", "形")):
+        return   # 同じセルを値をそろえる・形の照らしが問うている（そちらの答えで解く）
+    鍵 = f"{where}/表の外の字:{列}/{v}"   # 同じ字は 1 問（答えはその字の全部の行に当てる・寄せる道具.md §4.5）
+    ans = o.人の答え.get(鍵, "")
+    if ans.startswith("値:"):
+        w = ans[2:].strip()
+        if w and _設定.選べる値の字か(外, w):
+            rows[r][k] = w
+            記.当てた.append((0, 0, "表の外の字", f"{where}/{列}/{名}"))
+            return
+        記.知らせ.append(f"{鍵}: 答え「{ans}」は {外} の選べる値の外＝書かず問いに残す")
+    if ans == "空にする" and 既定の字(外) is None:
+        rows[r][k] = ""
+        記.数["捨てた（人の答え）"] += 1
+        記.足りない.append({"所": where, "行": 名, "項目": 外, "なぜ": f"選べる値の外の「{v}」を人が空にした"})
+        return
+    在る = next((x for x in 記.寄せられない if x["鍵"] == 鍵), None)
+    if 在る is not None:   # 同じ字の別の行＝同じ問いに行の名を足す
+        在る["中身"] += f"・{名}"
+        return
+    記.出せない(鍵, "表の外の字", where, f"「{列}」= {v}（{外} の選べる値の外＝芯が読めない前の語か書き誤り）{既定の文(外)}。当たる行: {名}",
+              [f"値:<{選べる値の文(外)} のどれか>", *空にする答え(外, 記, 鍵, ans)], 手がかり.get(f"{t}/{v}", 手がかり.get(f"{t}/{列}", "")))
+
+
+# 前の形の列 → 今の列（人の段）。前の道具の「区分」は賃金の形（月給・時間給）と人の区分（役員など）を 1 つの列に混ぜていた。
+# 寄せは賃金の形を 支払.賃金の形 へ移したが、人の区分は読めず 人.区分 を空のまま通した＝前の区分が黙って消えた（寄せる道具.md §4.5）
+前の列の行き先 = {"区分": "人.区分"}
+
+
+def 前の列を問う(o: 物, 記: 記録, 手がかり: dict):
+    """旧_ のタブ（NO の列が在る物）に前の列の値が在り、同じ NO の今の行の行き先の列が空の人を問いにする（寄せる道具.md §4.5）。
+    前の値がそのまま行き先の選べる値なら移す（読み替えではなく同じ字）。外なら見当で読み替えず、答えを待つ
+    （値:<選べる値> で書く・後で埋める で足りない値へ）。"""
+    for f in sorted(o.シート):
+        if 履歴の物か(f):
+            continue
+        tabs = o.シート[f]
+        for 前列, 今列 in 前の列の行き先.items():
+            前の値: dict[str, dict[str, str]] = {}   # NO → {前の値: 旧_ のタブ}（2 つの 旧_ で違えば問う＝先の物を黙って取らない）
+            for t in sorted(tabs):
+                rows = tabs[t]
+                if not t.startswith(旧の頭) or not rows:
+                    continue
+                h = [str(x).strip() for x in rows[0]]
+                if "NO" not in h or 前列 not in h:
+                    continue
+                ni, ci = h.index("NO"), h.index(前列)
+                for r in rows[1:]:
+                    if max(ni, ci) < len(r) and not 空か(r[ni]) and not 空か(r[ci]):
+                        前の値.setdefault(番号の字(r[ni]), {}).setdefault(str(r[ci]).strip(), t)
+            if not 前の値:
+                continue
+            for t, rows in tabs.items():
+                if t.startswith(旧の頭) or not rows:
+                    continue
+                h = [str(x).strip() for x in rows[0]]
+                if "NO" not in h or 今列 not in h:
+                    continue
+                ni, k = h.index("NO"), h.index(今列)
+                for r in range(1, len(rows)):
+                    row = rows[r]
+                    if ni >= len(row) or 空か(row[ni]) or (k < len(row) and not 空か(row[k])):
+                        continue
+                    hit = 前の値.get(番号の字(row[ni]))
+                    if hit is None:
+                        continue
+                    while len(row) <= k:
+                        row.append("")
+                    旧t, v = "・".join(dict.fromkeys(hit.values())), "・".join(hit)
+                    違う = len(hit) > 1
+                    名 = 行の名(rows, r)
+                    where = f"{f}/{t}"
+                    if not 違う and _設定.選べる値の字か(今列, v):
+                        row[k] = v
+                        記.数["足した"] += 1   # 旧_ の値はそのまま残る＝空のセルへ写した 1 つは足した値
+                        記.当てた.append((0, 0, "前の列を移す", f"{where}/{今列}/{名}"))
+                        continue
+                    鍵 = f"{where}/前の列:{前列}→{今列}/{名}"
+                    ans = o.人の答え.get(鍵, "")
+                    if ans.startswith("値:"):
+                        w = ans[2:].strip()
+                        if w and _設定.選べる値の字か(今列, w):
+                            row[k] = w
+                            記.数["足した"] += 1
+                            記.当てた.append((0, 0, "前の列を移す", f"{where}/{今列}/{名}"))
+                            continue
+                        記.知らせ.append(f"{鍵}: 答え「{ans}」は {今列} の選べる値の外＝書かず問いに残す")
+                    if ans == "後で埋める":
+                        記.足りない.append({"所": where, "行": 名, "項目": 今列, "なぜ": f"前の {旧t} の {前列}「{v}」から読めず、人が後で埋めると答えた"})
+                        continue
+                    記.出せない(鍵, "前の列が移っていない", where,
+                              (f"{名}: 前の {旧t} の「{前列}」が {v} と違う（どれを {今列} へ移すか見当で選ばない）" if 違う else
+                               f"{名}: 前の {旧t} の「{前列}」= {v} が、今の「{今列}」へ移っていない（空）。{v} は {今列} の選べる値の外＝見当で読み替えない"),
+                              [f"値:<{選べる値の文(今列)} のどれか>", "後で埋める"], 手がかり.get(f"{旧t}/{前列}", ""))
+
+
 def 値をそろえる当てる(o: 物, f: str, t: str, rows: list, op: dict, 記: 記録, 版: int, 番: int, 手がかり: dict,
                   だけ: set | None = None):
     """`だけ`（行の id の集まり）を渡せば、その行だけに当てる（答えで項目を今の名にした行へ、後から読み替えを通す）。"""
@@ -1320,8 +1479,11 @@ def 照らす(o: 物, K: dict, 記: 記録, 手がかり: dict, 前の物: 物, 
     for f in sorted(o.シート):
         tk = 型のファイル(K, f)
         if tk is None and f in K.get("事務所のファイル", ()):
-            # 事務所の 質問と回答 は会社の寄せの外（会社の 1_決まり/質問と回答 へ移す答えを出さない）。前の形は 呼び口 質問と回答 で寄せる
-            記.知らせ.append(f"{f}: 事務所のシート（会社の寄せの外・前の形は 呼び口 質問と回答 で寄せる）")
+            # 事務所の 質問と回答 は会社の寄せの外（会社の 1_決まり/質問と回答 へ移す答えを出さない）
+            記.知らせ.append(f"{f}: 事務所のシート（会社の寄せの外）")
+            continue
+        if tk is None and 履歴の物か(f):
+            記.知らせ.append(f"{f}: 9_履歴 の物（寄せの外・写しと来歴として残す）")
             continue
         if tk is None:
             # 型に無いシート: 値が在れば黙って通さない（前の置き場の型のシート・前の形の file を「前と同じ」で通していた）。
@@ -1435,6 +1597,8 @@ def 照らす(o: 物, K: dict, 記: 記録, 手がかり: dict, 前の物: 物, 
                         if spec.get("必須") and any(not 空か(x) for x in rows[r]):
                             記.足りない.append({"所": where, "行": 行の名(rows, r), "項目": spec["名"], "なぜ": "型が要る値が空"})
                         continue
+                    if spec["名"] == "反映済み" and 反映済みの字を寄せる(rows, r, k, want, where, 記):
+                        continue
                     ok = True
                     if spec.get("選べる値") and str(v).strip() not in spec["選べる値"]:
                         ok = False
@@ -1450,7 +1614,10 @@ def 照らす(o: 物, K: dict, 記: 記録, 手がかり: dict, 前の物: 物, 
                         記.数["捨てた（人の答え）"] += 1
                         記.足りない.append({"所": where, "行": 行の名(rows, r), "項目": spec["名"], "なぜ": "形の合わない値を人が空にした"})
                         continue
-                    if ans.startswith("値:"):
+                    if ans.startswith("値:") and (外 := 表の外の字(rows, r, {"列": spec["名"]}, ans[2:].strip())) is not None:
+                        # 人の答えの値も選べる値の外なら書かない（前は答えの字をそのまま書き、前の語がマスタに残った）
+                        記.知らせ.append(f"{鍵}: 答え「{ans}」は {外} の選べる値の外＝書かず問いに残す")
+                    elif ans.startswith("値:"):
                         rows[r][k] = ans[2:]
                         if spec["名"] == "項目":
                             記.答えで項目を変えた.setdefault((f, t), set()).add(id(rows[r]))
@@ -1592,32 +1759,23 @@ def 今の列へ移す当てる(rows: list, k: int, ans: str, want: list[str], �
     return []
 
 
-# 項目の語が合わない行（台帳「月の前提」・マスタ「会社」）へ人が選べる、行ごと今の所へ移す答え
+# 項目の語が合わない行（マスタ「会社」）へ人が選べる、行ごと今の所へ移す答え。鍵は今の型に在るタブだけ（照らすは今の型のタブにだけ
+# 当てる）。前の台帳「月の前提」は型の版 27 で畳んだ＝消す問いへ回り、その月の値は その月だけの指示（前の 月の変動 は 計算の形 の 11 が写す）
 行の答えの形 = {
-    "月の前提": ["月の前提の語へ:<語>=<値>|…", "月の変動へ:<項目>|<NO>=<値>|<NO>|…", "入口が読み直す", "持たない:<なぜ>"],
     "会社": ["人の列へ:<列>=<値>|<NO>|…", "持たない:<なぜ>"],
-    "既定": ["持たない:<なぜ>"],
 }
 
 
 def 行の答えを当てる(o: 物, f: str, t: str, rows: list, ki: int, spec: dict, 記: 記録) -> list:
     """項目の語が型に合わない行を、人の答えで行ごと移す（移した行は外す）。答えの形が違う・ぶつかる時は何もせず
     知らせに出し、行は残す（照らすが「形の合わない値」の問いに残す）。値は数を合わせる（値の保ち）:
-    外した行の値は 他の所へ移した、足した行・セルの値は 足した、持たない・入口が読み直す は 捨てた（人の答え）。"""
-    head = rows[0]
+    外した行の値は 他の所へ移した、足した行・セルの値は 足した、持たない は 捨てた（人の答え）。"""
     where = f"{f}/{t}"
     形 = 行の答えの形.get(t, [])
     if not 形:
         return rows
     頭たち = {x.split(":")[0] for x in 形}
     外す = set()
-    名の数 = {}
-    for r in range(1, len(rows)):
-        名の数[行の名(rows, r)] = 名の数.get(行の名(rows, r), 0) + 1
-
-    def 値の列():
-        return next((c for c in ("今月の値", "今の値", "値") if c in head), None)
-
     for r in range(1, len(rows)):
         v = str(rows[r][ki]).strip()
         if 空か(v):
@@ -1631,91 +1789,19 @@ def 行の答えを当てる(o: 物, f: str, t: str, rows: list, ki: int, spec: 
         if 頭 not in 頭たち:
             continue
         m_old = sum(1 for x in rows[r] if not 空か(x))
-        行 = dict(zip(head, rows[r]))
-        vc = 値の列()
-        前の値 = str(行.get(vc, "")).strip() if vc else ""
 
         def だめ(なぜ):
             記.知らせ.append(f"{where}/{名}: 答え「{ans}」を当てられない（{なぜ}）＝問いに残す")
 
-        if 頭 == "持たない" or 頭 == "入口が読み直す":
-            if 頭 == "持たない" and not 体.strip():
+        if 頭 == "持たない":
+            if not 体.strip():
                 だめ("持たない:<なぜ> の なぜ が空")
                 continue
             外す.add(r)
             記.数["捨てた（人の答え）"] += m_old
-            if 頭 == "持たない":
-                記.持たない.append((f"{where}/{名}", m_old, f"人の答え: {体.strip()}"))
-            else:
-                記.足りない.append({"所": where, "行": 名, "項目": v,
-                                  "なぜ": "入口が原本から勤怠の日の行へ読み直す（前の値は寄せの写しに在る）"})
+            記.持たない.append((f"{where}/{名}", m_old, f"人の答え: {体.strip()}"))
             continue
         片 = [x for x in 体.split("|")]
-        if 頭 == "月の前提の語へ":
-            読み = 読み替えを読む(片)
-            if not 読み or any(w not in spec.get("選べる値", []) for w in 読み):
-                だめ("語は 月の前提 の語だけ・`語=値` を | で並べる")
-                continue
-            if 名の数[名] > 1 and any(x for x in 読み.values()):
-                だめ(f"同じ「{名}」の行が {名の数[名]} 行在る（支給月ごとに分けて答える）")
-                continue
-            足す = []
-            for w, x in 読み.items():
-                new = list(rows[r])
-                new[ki] = w
-                if vc:
-                    new[head.index(vc)] = x if x else 前の値
-                足す.append(new)
-            ぶつかる = [n for n in 足す if any(rr[ki] == n[ki] and rr != n and all(rr[i] == n[i] for i, c in enumerate(head) if c in ("会社", "支給月"))
-                                              for rr in rows[1:])]
-            if ぶつかる:
-                だめ("同じ支給月に同じ語の行が在る")
-                continue
-            足す = [n for n in 足す if n not in rows[1:]]  # 同じ行が既に在れば足さない（重ねる）
-            外す.add(r)
-            rows.extend(足す)
-            記.数["他の所へ移した"] += m_old
-            記.数["足した"] += sum(1 for n in 足す for x in n if not 空か(x))
-            continue
-        if 頭 == "月の変動へ":
-            dst = o.シート.get(f, {}).get("月の変動")
-            項目 = 片[0].strip() if 片 else ""
-            人たち = [x.split("=", 1) if "=" in x else [x, 前の値] for x in 片[1:]]
-            人たち = [(a.strip(), b.strip()) for a, b in 人たち if a.strip()]
-            if not dst or not 項目 or not 人たち:
-                だめ("月の変動 のタブ・項目・NO が要る（月の変動へ:<項目>|<NO>=<値>|<NO>）")
-                continue
-            if 名の数[名] > 1 and any("=" in x for x in 片[1:]):
-                だめ(f"同じ「{名}」の行が {名の数[名]} 行在る（支給月ごとに分けて答える）")
-                continue
-            dh = dst[0]
-            if not {"NO", "項目", "値"} <= set(dh):
-                だめ("月の変動 の見出しが型と違う")
-                continue
-            足す, 合う = [], 0
-            for no, x in 人たち:
-                want = {"会社": 行.get("会社", "") or o.会社, "支給月": 行.get("支給月", ""), "NO": no, "項目": 項目}
-                hit = next((d for d in dst[1:] if all(str(d[dh.index(c)]).strip() == str(w).strip() for c, w in want.items() if c in dh)), None)
-                if hit is not None:
-                    if str(hit[dh.index("値")]).strip() == x:
-                        合う += 1
-                        continue
-                    足す = None
-                    break
-                new = [""] * len(dh)
-                for c, w in {**want, "値": x}.items():
-                    if c in dh:
-                        new[dh.index(c)] = w
-                足す.append(new)
-            if 足す is None:
-                だめ("月の変動 に同じ人・項目の違う値が在る")
-                continue
-            外す.add(r)
-            dst.extend(足す)
-            記.渡すタブ.add((f, t))
-            記.数["他の所へ移した"] += m_old
-            記.数["足した"] += sum(1 for n in 足す for x in n if not 空か(x))
-            continue
         if 頭 == "人の列へ":
             dst = o.シート.get(f, {}).get("社員")
             読み = 読み替えを読む(片[:1])
@@ -1748,27 +1834,70 @@ def 行の答えを当てる(o: 物, f: str, t: str, rows: list, ki: int, spec: 
     return [rows[0]] + [rows[r] for r in range(1, len(rows)) if r not in 外す]
 
 
+def 番号の字(v) -> str:
+    """NO を突き合わせる字（頭の 0 と前後の空白の揺れだけ寄せる）。"""
+    s = str(v).strip()
+    return s.lstrip("0") or s
+
+
 def 旧のタブを照らす(o: 物, 記: 記録, 手がかり: dict | None = None):
-    """旧_ のタブの値が今のタブか md に在るか（寄せる道具.md §4.1）。消さない。消す問いへ並べる。"""
+    """旧_ のタブの値が今のタブか md に在るか（寄せる道具.md §4.1・§4.5）。消さない。消す問いへ並べる。
+    NO の列が在る旧_ のタブは人ごとに照らす: その行の値が、同じ NO の今の行（同じファイルの 旧_ でないタブ）に在るかを見る。
+    ファイルのどこかに同じ字が在るだけでは在るとしない（古い社員の区分が、ほかの人の行や型の名に同じ字が在るせいで
+    在ると数えられ、消す推奨で落ちた）。NO の無いタブだけファイル全体と md の字で照らす。"""
+    本文 = "\n".join(o.md.values())
     for f in sorted(o.シート):
+        if 履歴の物か(f):
+            continue
         tabs = o.シート[f]
-        在る = {str(v).strip() for t, rows in tabs.items() if not t.startswith(旧の頭) for r in rows for v in r if not 空か(v)}
-        本文 = "\n".join(o.md.values())
+        今のタブ = {t: rows for t, rows in tabs.items() if not t.startswith(旧の頭)}
+        在る = {str(v).strip() for rows in 今のタブ.values() for r in rows for v in r if not 空か(v)}
+        人の値: dict[str, set] = {}
+        for rows in 今のタブ.values():
+            if not rows or "NO" not in [str(h).strip() for h in rows[0]]:
+                continue
+            ni = [str(h).strip() for h in rows[0]].index("NO")
+            for r in rows[1:]:
+                if ni < len(r) and not 空か(r[ni]):
+                    人の値.setdefault(番号の字(r[ni]), set()).update(str(v).strip() for v in r if not 空か(v))
         for t in sorted(tabs):
             if not t.startswith(旧の頭):
                 continue
-            vals = [str(v).strip() for r in tabs[t][1:] for v in r if not 空か(v)]
-            無い = [v for v in vals if v not in 在る and v not in 本文]
+            rows = tabs[t]
+            head = [str(h).strip() for h in rows[0]] if rows else []
+            無い: list[tuple[str, str]] = []   # (列, 値)
+            for r in rows[1:]:
+                if "NO" in head:
+                    ni = head.index("NO")
+                    no = 番号の字(r[ni]) if ni < len(r) and not 空か(r[ni]) else ""
+                    その人 = 人の値.get(no, set()) if no else None
+                else:
+                    その人 = None
+                for c, v in enumerate(r):
+                    if 空か(v):
+                        continue
+                    v = str(v).strip()
+                    列 = head[c] if c < len(head) and head[c] else 列の字(c + 1)
+                    if その人 is not None:
+                        if v not in その人:
+                            無い.append((列, v))
+                    elif v not in 在る and v not in 本文:
+                        無い.append((列, v))
             if not 無い:
                 記.消す問い.append({"物": f"タブ {t}", "置き場": f, "中身はどこに在るか": "今のタブ", "推奨": "消す",
                                 "消す手順": [{"する": "タブを消す", "ファイル": f, "タブ": t}]})
                 continue
+            数: dict[str, int] = {}
+            for 列, _ in 無い:
+                数[列] = 数.get(列, 0) + 1
+            内訳 = "・".join(f"列 {k}: {n} 個" for k, n in 数.items())
             鍵 = f"{f}/{t}/旧のタブ"
             if o.人の答え.get(鍵) == "9_履歴 へ写して消す":
-                記.消す問い.append({"物": f"タブ {t}", "置き場": f, "中身はどこに在るか": f"寄せの写しの中だけ（今に無い値 {len(無い)} 個）", "推奨": "消す",
+                記.消す問い.append({"物": f"タブ {t}", "置き場": f, "中身はどこに在るか": f"寄せの写しの中だけ（今に無い値 {len(無い)} 個＝{内訳}）", "推奨": "消す",
                                 "消す手順": [{"する": "タブを消す", "ファイル": f, "タブ": t}]})
                 continue
-            記.出せない(鍵, "旧_ のタブ", f"{f}/{t}", f"今のタブに無い値が {len(無い)} 個", ["型へ足す（B3 へ直しを頼む）", "9_履歴 へ写して消す"],
+            人ごと = "（NO ごとに同じ人の今の行と照らした）" if "NO" in head else ""
+            記.出せない(鍵, "旧_ のタブ", f"{f}/{t}", f"今のタブに無い値が {len(無い)} 個{人ごと}: {内訳}", ["型へ足す（B3 へ直しを頼む）", "9_履歴 へ写して消す"],
                       (手がかり or {}).get(t, ""))
 
 
@@ -1816,11 +1945,36 @@ def 写しから戻す(o: 物, K: dict) -> dict:
     for m in K["md"]:
         if m in o.md:
             continue
-        写し = sorted(k for k in o.md if (r := 写しを読む(k)) and r[1] == m.replace("/", "_"))
+        写し = sorted(k for k in o.履歴のmd if (r := 写しを読む(k)) and r[1] == m.replace("/", "_"))
         if 写し:
-            o.md[m] = o.md[写し[-1]]
+            o.md[m] = o.履歴のmd[写し[-1]]
             戻した[m] = 写し[-1]
     return 戻した
+
+
+置き場の行が無い = "置き場の行が無い"
+
+
+def 置き場の行が分からない(o: 物, 前: str, 後: str, 記: 記録) -> bool:
+    """置き場の物（置き場の行の手 が行を返す名）へ移すのに、会社の入力に 置き場の行 の鍵が無い＝移さず寄せられない物に出す（True）。
+    鍵が無いと戻す手順が前の行を知らず、元から在る行を「置き場の行を消す」で消してしまう。鍵が在れば（{} も）移す。"""
+    if o.置き場の行がある or 置き場の行の手(o, 後) is None:
+        return False
+    記.出せない(f"置き場の行:{前}→{後}", 置き場の行が無い, 前,
+              f"{前} を置き場の物 {後.rstrip('/')} へ移すが、会社の入力に 置き場の行（事務所の設定「置き場」のこの会社の行）が無い"
+              "＝戻す時に前の行へ書き戻せない（元から在る行を消してしまう）",
+              ["置き場の行を渡して寄せ直す（殻）"],
+              "殻が事務所の設定「置き場」のこの会社の行を {物: ID} で 置き場の行 に渡す（行が 1 つも無ければ {}）")
+    return True
+
+
+def 置き場の行の手(o: 物, 名: str) -> dict | None:
+    """組の根の直下へ移した名が置き場の物（事務所の設定「置き場」の列「物」に書ける字）なら、その行の鍵（顧客ID・会社・組・物）。
+    置き場の物でない名（深い名・9_履歴 の写しの名・md）は None。顧客ID が空なら殻が会社の一覧の（組, 会社）から引く。"""
+    x = 名.rstrip("/")
+    if "/" in x or not 型の口.置き場の物の名か(x):
+        return None
+    return {"顧客ID": o.顧客ID, "会社": o.会社, "組": o.組, "物": x}
 
 
 def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_md: dict | None = None):
@@ -1869,10 +2023,15 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
     受け = [x for x in 変わる if (x[2], x[3]) not in 渡す]
     渡し = [x for x in 変わる if (x[2], x[3]) in 渡す]
     書く, 戻す = [], []
-    for f in sorted({x[0] for x in 変わる if x[0]}):
-        書く.append({"する": "file を写す", "元": f, "先": 写しの先(消す日, f)})
+    # 置き場の名の移しを先に当てる（前の形の履歴の置き場などを今の名へ移してから、寄せの写しを今の 9_履歴/ へ置く）。
+    # 移しは値を変えない＝写しは移した後の名から取っても寄せの前の値。途中で落ちても読み直せば今の名から当て直せる。
     for a, b in 記.移した:
         書く.append({"する": "file を移す", "前": a, "後": b})
+        行 = 置き場の行の手(前, b)
+        if 行:   # 置き場の物を移した＝事務所の設定「置き場」の行も同じ手で書く（ID は殻が移した後のその名から読む）
+            書く.append({"する": "置き場の行を書く", **行, "名": b.rstrip("/")})
+    for f in sorted({x[0] for x in 変わる if x[0]}):
+        書く.append({"する": "file を写す", "元": 今の名(f), "先": 写しの先(消す日, 今の名(f))})
     for f, a, b in 記.タブの名:
         書く.append({"する": "タブの名を変える", "ファイル": 今の名(f), "前": a, "後": b})
     for nf, nt in sorted(足した):
@@ -1906,6 +2065,13 @@ def 手順を作る(前: 物, 後: 物, 記: 記録, 今日: dt.date, 戻した_
         戻す.append({"する": "タブの名を変える", "ファイル": 今の名(f), "前": b, "後": a})
     for a, b in reversed(記.移した):
         戻す.append({"する": "file を移す", "前": b, "後": a})
+        行 = 置き場の行の手(前, b)
+        if 行:   # 置き場の行を寄せの前へ戻す（前に行が無ければ消す）
+            # 消すのは 置き場の行 の鍵が在り、その物の行が無かった時だけ（鍵の無い会社は移す前に拒んだ＝置き場の行が分からない）
+            if 行["物"] in 前.置き場の行:
+                戻す.append({"する": "置き場の行を書く", **行, "ID": 前.置き場の行[行["物"]]})
+            elif 前.置き場の行がある:
+                戻す.append({"する": "置き場の行を消す", **行})
     return 書く, 戻す, sorted({f"{x[2]}/{x[3]}" for x in 変わる}), 書かない
 
 
@@ -1936,6 +2102,8 @@ def 書かない物(前: 物, 後: 物, 今の名, タブの前の名: dict, 足
     for m, text in 前.md.items():
         if 後.md.get(今の名(m)) == text:
             出す.append({"所": 今の名(m), "行": 0, "なぜ": "前と同じ（今の形のまま＝書く事が無い）"})
+    for m in 前.履歴のmd:
+        出す.append({"所": m, "行": 0, "なぜ": f"{履歴の名} の写し（寄せの外＝直さず・移さず・作らない）"})
     return 出す
 
 
@@ -1972,6 +2140,10 @@ def 手順を当てる(d: dict, 手順: list[dict]) -> dict:
             M[s["名"]] = s["本文"]
             if s["名"] not in d["置き場"]:
                 d["置き場"].append(s["名"])
+        elif k == "置き場の行を書く":   # ID は Drive では殻が移した後の名から読む＝値の上では 名 を ID の代わりに置く
+            d.setdefault("置き場の行", {})[s["物"]] = s.get("ID") or f"<{s['名']} の ID>"
+        elif k == "置き場の行を消す":
+            d.setdefault("置き場の行", {}).pop(s["物"], None)
     return d
 
 
@@ -2124,6 +2296,7 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     o = 物(会社)
     記 = 記録()
     直したち = 直しの形.今の名で読む(前の形を足す(直したち, o.前の形))
+    前の置き場を移す(o, 直したち, 記, 今日)
     止めた = 前の置き場を照らす(o, 直したち, 記)
     if 止めた:
         return 止めた結果(前, K, 記)
@@ -2166,6 +2339,8 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
     # 型の版を上げない読み: 前の 勤務の長さの丸め（直し 3 が 時間.打刻の丸めの単位 へ移した値）を黙って使わず 委託.実働の丸め への問いに。どの版の会社にも毎回
     import 実働の丸め
     実働の丸め.当てる(o, 記, 前)
+    表の外を照らす(o, K, 記, 手がかり)
+    前の列を問う(o, 記, 手がかり)
     # 型の版を上げない読み: マスタ・台帳の 支給月・日付・時刻 の字を型の書き方へ（字だけで同じ値に決まる物だけ・見回りの赤と同じ列）。どの版の会社にも毎回
     import 書き方
     書き方.当てる(o, 記)
@@ -2193,6 +2368,10 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
         x.update({"会社": o.会社, "中を見た窓": x.get("中を見た窓", ""), "期限": x.get("期限", ""), **x})
     o.版 = K["版"]
     書く, 戻す, 変わるタブ, 書かない = 手順を作る(前, o, 記, 今日, 戻した_md)
+    # 頭は書き終えた後の形（殻は 戻す手順を照らす を呼ぶ）。値の上では中身の無い置き場は名を持たない＝移した先の名も在る物に数える
+    書いた後 = 手順を当てる(前.出す(), 書く)
+    書いた後["置き場"] = [*書いた後["置き場"], *(x["後"] for x in 書く if x["する"] == "file を移す")]
+    戻す = _書.戻す手順を組む(書いた後, 戻す)
     書かない += 記.書かない
     for x in 書かない:
         if x["行"] and x["所"].rsplit("/", 1)[-1] in 入口が書くタブ:
@@ -2223,6 +2402,33 @@ def 見通す(会社: dict, 型: dict, 直したち: list[dict], 今日: dt.date
 
 # 9_履歴/消す_<日>_<元の名> の名の形の正本は 確認ページ.消す名（組む）・消す名を読む（読む）＝ここは 9_履歴/ を前に付けるだけ。
 写しの頭 = f"{履歴の名}/{確認ページの形().消す名の頭}"
+
+
+def 反映済みの字を寄せる(rows, r, k, 列たち, 所, 記) -> bool:
+    """質問と回答 の 反映済み の字を、今の読み口（型の口.反映済みを読む＝読む字の正本）が読む字へ寄せる。寄せたら True。
+    ・読み口が読む字（済・反映済み・未・日付など 型の 同じに読む字・日付は）はそのまま（選べる値だけで照らすと、読める字まで問いに出た）
+    ・読める頭の字＋（注）: 頭の字だけにする（注は寄せの写し＝9_履歴 に残し、知らせに出す）
+    ・出し直し／取り下げ: 回答の頭が同じ印＋→ の閉じた行だけそのまま通す（反映の照らしは閉じた行を読まない＝閉じた印の正本は回答の頭・値は変えない）
+    それ以外は False＝形の合わない値として問いに残す。"""
+    v = str(rows[r][k]).strip()
+    if 型の口.反映済みを読む(v) is not None:
+        return True
+    名 = 行の名(rows, r)
+    m = re.fullmatch(r"(.+?)[（(](.*)[）)]", v, re.S)
+    if m and 型の口.反映済みを読む(m.group(1)) is not None:
+        rows[r][k] = m.group(1).strip()
+        記.知らせ.append(f"{所}/反映済み/{名}: 「{v}」の注を外し「{rows[r][k]}」へ（注は寄せの写しに在る）")
+        return True
+    回答 = str(rows[r][列たち.index("回答")]).strip() if "回答" in 列たち and 列たち.index("回答") < len(rows[r]) else ""
+    if v in _設問.閉じた頭 and _設問.閉じた答え(回答) and _字.頭が(回答, f"{v}→"):
+        記.知らせ.append(f"{所}/反映済み/{名}: 「{v}」は回答の頭「{v}→」と同じ印の閉じた行＝読む側が照らさないのでそのまま")
+        return True
+    return False
+
+
+def 履歴の物か(名: str) -> bool:
+    """9_履歴/ の下の物か（寄せの外＝殻も 9_履歴 の中は読まない。前の形の履歴の置き場を移した後の中身も同じ）。"""
+    return 名.startswith(f"{履歴の名}/")
 
 
 def 写しの先(消す日, 元: str) -> str:
@@ -2273,14 +2479,43 @@ def 管理表の行(会社: str, 版: int, 今日: dt.date, 写し: list[str]) -
 
 
 前の形の置き場 = "前の形の置き場"
-作り直す = "作り直す（docs/設計/Drive の型.md §10・前の形の Drive は移さない）"
+作り直す = "置き場を手で今の形へ移す（docs/設計/Drive の型.md §10・寄せが移せない名）"
+
+
+def 前の置き場を移す(o: 物, 直したち: list[dict], 記: 記録, 今日: dt.date) -> None:
+    """前の形の置き場（直しの「前の置き場を止める」の 前）を、組の根の直下で今の名（後）へ移す（Drive の型 §10）。
+
+    前の形の Drive も寄せで今の形へ移す（作り直さない＝値と来歴を持ったまま）。後が空の名（今の形に持たない物）は
+    9_履歴/消す_<期限の日>_<元の名> へ移す（消さない）。後に <…> を持つ名（月で決まる先）・移す先が既に在る名は移さず、
+    下の 前の置き場を照らす が寄せられない物に挙げて止める（黙って読み続けない）。直しの版の順・直しの中の順に当てる。
+
+    原因（2026-11-26）: 前の形の会社（型の版 16・19）は 作り直す だけで止まり、寄せ道具で移す道が無かった。"""
+    for 番, (前, 後, 版) in enumerate(直しの形.前の置き場(直したち)):
+        if "<" in 後:
+            continue
+        if 前.endswith("/"):
+            対 = [前] if any(x == 前 or x.startswith(前) for x in o.置き場) else []
+        else:   # 頭の名（前の台帳の頭 → 今の台帳の頭）・1 つの名（前の目次）: 直下の file を 1 つずつ
+            対 = sorted(x for x in {*o.置き場, *o.シート, *o.md} if "/" not in x and x.startswith(前))
+        for x in 対:
+            先 = 後 + x[len(前):] if 後 else 写しの先(期限の日(今日), x)
+            if 先 == x:
+                continue
+            if not 後:
+                if 置き場の行が分からない(o, x, 先, 記):
+                    continue
+                o.名を移す(x, 先)
+                記.移した.append((x, 先))
+                記.当てた.append((版, 番, "前の置き場を移す", f"{x}→{先}"))
+                continue
+            当てる操作(o, {"する": "file を置き場へ移す", "前": x, "後": 先}, {}, 記, 版, 番, {})
 
 
 def 前の置き場を照らす(o: 物, 直したち: list[dict], 記: 記録) -> bool:
     """前の形の置き場の名（直しの「前の置き場を止める」の 前）を持つシート・md・置き場を、会社の型の版によらず挙げる。
 
-    前の形の Drive は新しい形で作り直す（Drive の型 §10＝移す道具は使わない）。前の名を黙って読み続けない＝1 つでも在れば
-    寄せは何も当てずに止まる（答えは 作り直す だけ＝人の答えで通す道は無い）。"""
+    上の 前の置き場を移す が移した後に残る物（月で決まる先・移す先が既に在る）だけが当たる。前の名を黙って読み続けない＝1 つでも
+    残れば寄せは何も当てずに止まる（答えは 作り直す＝置き場を手で今の形へ移す だけ・人の答えで通す道は無い）。"""
     止め = 直しの形.前の置き場(直したち)
     名たち = sorted({*o.シート, *o.md, *o.置き場})
     for 名 in 名たち:
@@ -2288,7 +2523,7 @@ def 前の置き場を照らす(o: 物, 直したち: list[dict], 記: 記録) -
             if 直しの形.前の名か(名, 前):
                 今 = f"今の名「{後}」" if 後 else "今の形には持たない"
                 記.出せない(f"{名}/{前の形の置き場}", 前の形の置き場, 名,
-                         f"前の形の置き場の名「{前}」（{今}・直し {版}）。前の形の Drive は寄せずに新しい形で作り直す", [作り直す])
+                         f"前の形の置き場の名「{前}」（{今}・直し {版}）。寄せが移せない（月で決まる先・移す先が既に在る）", [作り直す])
                 break
     return bool(記.寄せられない)
 

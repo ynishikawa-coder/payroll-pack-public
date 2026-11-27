@@ -50,17 +50,22 @@ def 読む(csv字: str, 原本の名前: str, 文脈, 道具: str, 列名: dict 
     無い列 = [r for r in 要る役 if 名[r] not in (rd.fieldnames or [])]
     if 無い列:
         raise ValueError(f"CSV に {道具} の列「{'・'.join(名[r] for r in 無い列)}」が無い（列名 を直す）")
-    材料たち = []
+    材料たち, 全員の理由, 人の理由 = [], [], {}
     for row in rd:
         def g(r, row=row):  # 渡されなかった役（任意の列）は空
             return str(row.get(名[r], "") or "").strip() if r in 名 else ""
         if not g("番号") and not g("氏名"):
+            字 = 口.行の字(row)  # 人の空いた行の字は人に結べない＝黙って捨てず CSV の全員の要確認へ
+            if 字:
+                全員の理由.append(口.結べない字の理由(字))
             continue
-        d = 口.日付を決める(g("日付"), 文脈)
-        if d is None:
-            continue  # 期間の外の日（CSV は月より広く出せる）は読まない
         # つなぎに無く氏名も空の人は 仮:<番号> にする（違う人を 1 人に寄せない）
         no = 番号から.get(g("番号"), "") or ("" if g("氏名") else f"仮:{g('番号')}")
+        d = 口.日付を決める(g("日付"), 文脈)
+        if d is None:
+            if not 口.日付の形か(g("日付")):  # 読めない日付はその人の要確認。期間の外の日（CSV は月より広く出せる）は読まない
+                人の理由.setdefault((no, g("氏名")), []).append(f"日付「{g('日付')}」が読めない（{rd.line_num}行目）")
+            continue
         m = 口.日の材料(g("氏名"), d, 原本の名前, NO=no, 原本の場所=f"{rd.line_num}行目")
         if g("区分"):
             m.区分を足す(g("区分"), 文脈)
@@ -86,4 +91,11 @@ def 読む(csv字: str, 原本の名前: str, 文脈, 道具: str, 列名: dict 
         if g("備考"):
             m.備考.append(g("備考"))
         材料たち.append(m)
+    for (no, 表記) in 人の理由:  # 1 日も読めない人も出す（全日が 原本に無い になる）
+        if not any((m.NO, m.勤怠の表記) == (no, 表記) for m in 材料たち):
+            材料たち.append(口.日の材料(表記, 文脈.日付たち()[0], 原本の名前, NO=no, 行がある=False))
+    for m in 材料たち:
+        m.理由 += 全員の理由 + 人の理由.get((m.NO, m.勤怠の表記), [])
+    if 全員の理由 and not 材料たち:
+        raise ValueError(f"日次の勤怠CSV: 人の行が 1 つも無く、人に結べない字だけがある（{'／'.join(全員の理由)}）")
     return 口.仕上げる(材料たち, 文脈, 種別)
