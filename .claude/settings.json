@@ -1,5 +1,12 @@
 {
   "env": {
     "TZ": "Asia/Tokyo"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3 出口/出す.py:*)",
+      "Bash(python3 出口/段を見る.py:*)",
+      "Bash(python3 月次/決まりのmdを書き換える.py:*)"
+    ]
   }
 }

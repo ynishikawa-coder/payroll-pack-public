@@ -540,3 +540,108 @@ def test_版の見出しの誤りを見つけられる():
     assert 版の見出しの誤り(正 + "\n## 未リリース\n") != []                                       # 未リリースが 2 つ
     assert 版の見出しの誤り(正.replace("## [v0.1.2]", "## [v0.1.2 ]")) != []
 
+
+
+# ---- 3. 窓の許しの一覧（.claude/settings.json の permissions.allow）----
+# 許すのは Drive へ書くパックの入口の命令だけ（`python3 <入口>.py`）。その場で組む python -c・消しは許さない＝人の関所へ。
+# 試験が示すのは 2 つだけ: 一覧の形・在る・Drive の入口・道具/ を指さない事と、drive口/・道具/・tests/ の外で消しを直に呼ばない事。
+# 入口が消しに届かない事は示さない（道具/ を import する・drive口/ の中で消しを包む別名の関数は見えない）。
+# 動かし方の文は docs/毎月の流れ.md「窓が止まらずに Drive へ書く命令」。
+_許しの形 = re.compile(r"^Bash\(python3 ([^\s:*]+\.py):\*\)$")
+_消しの名の形 = re.compile(r"(消|trash|delete|ゴミ箱)", re.IGNORECASE)
+_生の消し = re.compile(r"deleteDimension|deleteSheet|deleteRange|emptyTrash|\.delete\(|[\"']trashed[\"']\s*:\s*True", re.IGNORECASE)
+_消してよい所 = ("drive口/", "道具/", "tests/")   # 消しは Drive の口が持ち、人が打つ開発の道具だけが呼ぶ
+
+
+def _消しの名たち(根_: Path) -> set[str]:
+    """Drive の口（drive口/）が持つ消しの口の名（今は 行を消す）。"""
+    import ast
+    名たち = set()
+    for f in sorted((根_ / "drive口").glob("*.py")):
+        for n in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and _消しの名の形.search(n.name):
+                名たち.add(n.name)
+    return 名たち
+
+
+def 消しの在りか(根_: Path = 根) -> list[str]:
+    """drive口/・道具/・tests/ の外で、Drive の消しを直に呼ぶ所（repo の全部の .py）。
+
+    見るのは書いた字: 口の消しの名への属性（.行を消す）・その名の字を渡す getattr など・Google の消しの頼みの名。
+    見ないもの: 道具/ の関数を import して呼ぶ道・drive口/ の中で消しを包む別名の関数・名を字から組み立てる道。
+    だから「入口が消しに届かない」の証明ではない（docs/毎月の流れ.md「窓が止まらずに Drive へ書く命令」）。"""
+    import ast
+    根_ = Path(根_).resolve()
+    名たち = _消しの名たち(根_)
+    在りか = []
+    for f in sorted(根_.rglob("*.py")):
+        相対 = f.relative_to(根_).as_posix()
+        if 相対.startswith(_消してよい所) or any(部.startswith(".") for 部 in f.relative_to(根_).parts):
+            continue
+        src = f.read_text(encoding="utf-8")
+        for n in ast.walk(ast.parse(src)):
+            if isinstance(n, ast.Attribute) and n.attr in 名たち:
+                在りか.append(f"{相対}:{n.lineno} .{n.attr}")
+            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("getattr", "hasattr", "methodcaller")
+                  and any(isinstance(x, ast.Constant) and x.value in 名たち for x in n.args)):
+                在りか.append(f"{相対}:{n.lineno} {n.func.id}(…'{next(x.value for x in n.args if isinstance(x, ast.Constant) and x.value in 名たち)}')")
+        for i, 行 in enumerate(src.splitlines(), 1):
+            if _生の消し.search(行):
+                在りか.append(f"{相対}:{i} Google の消しの頼み")
+    return 在りか
+
+
+def 許しの誤り(許したち: list, 根_: Path = 根) -> list[str]:
+    誤り = []
+    for 許し in 許したち:
+        m = _許しの形.match(許し) if isinstance(許し, str) else None
+        if not m:
+            誤り.append(f"{許し}: パックの入口の命令（Bash(python3 <入口>.py:*)）の形でない")
+            continue
+        p = 根_ / m.group(1)
+        if not p.is_file():
+            誤り.append(f"{許し}: 入口 {m.group(1)} が無い")
+            continue
+        src = p.read_text(encoding="utf-8")
+        if "__main__" not in src or "drive口.開く(" not in src:
+            誤り.append(f"{許し}: {m.group(1)} は Drive を開く入口でない")
+        if "消" in m.group(1) or m.group(1).startswith(_消してよい所):
+            誤り.append(f"{許し}: {m.group(1)} は消しを持つ所の命令（消しは人の関所に残す）")
+    if 許したち and (在りか := 消しの在りか(根_)):
+        誤り.append(f"消しを直に呼ぶ所が {'・'.join(_消してよい所)} の外にある: {'、'.join(在りか)}")
+    return 誤り
+
+
+def test_許しの一覧は在るDriveの入口だけを指す():
+    設定 = json.loads((根 / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert 許しの誤り(設定.get("permissions", {}).get("allow", [])) == []
+
+
+def test_許しの一覧の誤りを見つけられる(tmp_path):
+    def 置く(相対, 字):
+        f = tmp_path / 相対
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(字, encoding="utf-8")
+    置く("drive口/__init__.py", "class 口:\n    def 行を消す(self, *a): ...\n")
+    置く("口/書く.py", "import drive口\nif __name__ == '__main__':\n    drive口.開く()\n")
+    置く("口/読む.py", "print(1)\n")
+    置く("道具/片付け.py", "import drive口\nif __name__ == '__main__':\n    drive口.開く().行を消す('x')\n")
+    assert 許しの誤り(["Bash(python3 口/書く.py:*)"], tmp_path) == []   # 道具/ の中の消しは人が打つ物で、入口を赤にしない
+    for 悪い in ("Bash(python3 口/無い.py:*)",       # 無い file
+                 "Bash(python3 道具/片付け.py:*)",   # 消しを持つ所の命令
+                 "Bash(python3 口/読む.py:*)",       # Drive を開く入口でない
+                 "Bash(python3 -c:*)",               # その場で組む命令
+                 "Bash(python3:*)"):                 # 何でも通す
+        assert 許しの誤り([悪い], tmp_path), 悪い
+    # drive口/・道具/・tests/ の外で消しを直に呼ぶ所が在れば赤（入口から読まれるかは問わない）
+    for 名, 字 in (("口/助け.py", "def 片付け(d):\n    d.行を消す('x')\n"),
+                   ("口/深い/助け.py", "def 片付け(d):\n    getattr(d, '行を消す')('x')\n"),
+                   ("口/生.py", "def 片付け(s):\n    s.batchUpdate(body={'requests': [{'deleteDimension': {}}]})\n"),
+                   ("口/捨てる.py", "def 片付け(s):\n    s.files().delete(fileId='x')\n")):
+        置く(名, 字)
+        assert 許しの誤り(["Bash(python3 口/書く.py:*)"], tmp_path), 名
+        (tmp_path / 名).unlink()
+    assert 許しの誤り(["Bash(python3 口/書く.py:*)"], tmp_path) == []
+    # 今の repo: 3 つの入口は形・在る・Drive を開く が通り、drive口/・道具/・tests/ の外で消しを直に呼ぶ所が無い
+    assert 消しの在りか() == []
+    assert 許しの誤り([f"Bash(python3 {p}:*)" for p in ("出口/出す.py", "出口/段を見る.py", "月次/決まりのmdを書き換える.py")]) == []
