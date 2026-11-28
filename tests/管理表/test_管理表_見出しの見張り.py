@@ -1,4 +1,4 @@
-"""見張り: 管理表の 3 タブの見出しの並びが黙って変わらない（型を直す時は版と写しを同じ PR で直す）。"""
+"""見張り: 管理表の タブの見出しの並びが黙って変わらない（型を直す時は版と写しを同じ PR で直す）。"""
 import importlib.util
 import json
 from pathlib import Path
