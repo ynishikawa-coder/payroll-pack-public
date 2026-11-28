@@ -43,9 +43,6 @@ jobs:
           test -f "$f"
           echo "QA_HTML_CHECK=$f" >> "$GITHUB_ENV"
       - name: 検査
-        env:
-          # 顧客の語の束は repo に持たない。repo の secret に置いた時だけ渡る（無ければ skip）
-          PAYROLL_NG_WORDS: ${{ secrets.PAYROLL_NG_WORDS }}
         run: bash scripts/check_all.sh
       # 確認ページの検査の試験を名で出す（skip でなく pass した記録を CI に残す）。
       - name: 確認ページの検査の試験を名で見る

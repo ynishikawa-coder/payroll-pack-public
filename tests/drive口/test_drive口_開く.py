@@ -112,3 +112,38 @@ def test_Googleの口は表をRAWで書き読む時は字に直す():
     assert ("update", {"spreadsheetId": "作り物-表", "range": "'タブ'!A1", "valueInputOption": "RAW", "body": {"values": [["1"]]}}) in 記録
     assert 口.表を読む("作り物-表", "'タブ'!A1:Z") == [["1", "TRUE"]]
     assert ("get", {"spreadsheetId": "作り物-表", "range": "'タブ'!A1:Z", **_google.読む形}) in 記録
+
+
+def test_Googleの口の移すは今の親を全部外して新しい親だけにする():
+    # 2 度目に出す時、前の版を 9_履歴 へ移す口（共有ドライブ込み）
+    記録 = []
+    d = _呼び([{"parents": ["作り物-出す物", "作り物-別"]}, {"id": "作り物-前の版"}], 記録)
+    _google.Googleの口(d, None).移す("作り物-前の版", "作り物-9_履歴")
+    名, k = 記録[-1]
+    assert 名 == "update" and k["fileId"] == "作り物-前の版" and k["addParents"] == "作り物-9_履歴"
+    assert k["removeParents"] == "作り物-出す物,作り物-別" and k["supportsAllDrives"]
+    assert ("get", {"fileId": "作り物-前の版", "fields": "parents", "supportsAllDrives": True}) in 記録
+
+
+def test_Googleの口のリンクは開くURLを返す():
+    記録 = []
+    d = _呼び([{"webViewLink": "https://作り物.invalid/作り物-1"}], 記録)
+    assert _google.Googleの口(d, None).リンク("作り物-1") == "https://作り物.invalid/作り物-1"
+    assert 記録[-1][1]["fields"] == "webViewLink" and 記録[-1][1]["supportsAllDrives"]
+
+
+def test_Googleの口のシートを作るは名のタブを並びどおりに持たせる():
+    記録d, 記録s = [], []
+    d = _呼び([{"id": "作り物-表"}], 記録d)
+    s = _呼び([{"sheets": [{"properties": {"sheetId": 0}}]}, {}], 記録s)
+    assert _google.Googleの口(d, s).シートを作る("作り物-親", "作り物の表", ["1_一", "2_二", "3_三"]) == "作り物-表"
+    assert any(n == "create" and k["body"] == {"name": "作り物の表", "parents": ["作り物-親"], "mimeType": _google.シートのmime}
+               for n, k in 記録d)
+    名, k = next((n, k) for n, k in 記録s if n == "batchUpdate")
+    assert k["spreadsheetId"] == "作り物-表" and k["body"]["requests"] == [
+        {"updateSheetProperties": {"properties": {"sheetId": 0, "title": "1_一"}, "fields": "title"}},
+        {"addSheet": {"properties": {"title": "2_二"}}}, {"addSheet": {"properties": {"title": "3_三"}}}]
+    # タブを渡さなければ作るだけ（表の API を呼ばない）
+    記録s.clear()
+    d = _呼び([{"id": "作り物-表2"}], [])
+    assert _google.Googleの口(d, s).シートを作る("作り物-親", "作り物の表2") == "作り物-表2" and 記録s == []

@@ -239,7 +239,7 @@ def 見る(変更の記録, 答えの資料たち, 質問と回答=(), 会社: s
             q = 今の問い.get(no)
             if q is None:
                 訳たち.append("問いが無い")
-            elif _答えの無い答え.fullmatch(_型の口.答えの芯(q.get("回答"))):
+            elif _答えの無い答え.fullmatch(_型の口.答えの芯(q)):
                 if _過去の拠り所.search(_字(q.get("見当の拠り所"))):
                     訳たち.append("過去の結果が見当")
                 elif _字(r.get("確かめ")) == "確認済":

@@ -256,11 +256,56 @@ def まとめた中の名(名: str, 月: int) -> str:
 
 
 def 選べる値の字か(名: str, v) -> bool:
-    """名の値 v が表の選べる値に当たるか（寄せ・段の解決がマスタへ書く前に照らす）。照らさない形・空は True。"""
+    """名の値 v が表の選べる値に当たるか（マスタへ書く前に照らす）。照らさない形・空は True。"""
     e = 名を確かめる(名)
     if e is None or e["形"] not in 照らす形 or _空(v):
         return True
     return _照らし[e["形"]](e, v) is not None
+
+
+# 芯が値の形を読める形（書き戻しが設定へ書いてよいのは、この形で読めた値だけ）。字・JSON は形を決めていない＝人が反映する
+読める形 = (*照らす形, "額", "数", "率", "時間", "日付", "時刻", "時間帯")
+
+
+def 形で読めない訳(名: str, v) -> str:
+    """名の値 v を、芯が決めているその項目の形で読めるか → 読めれば ""、読めなければ訳（人が反映する理由）。
+    既定は止める側: 表に無い名・内の鍵・形を決めていない形（字・JSON など）・空・形で読めない字は、どれも訳を返す
+    （答えの文をそのまま設定へ書くと、芯が古い値か読めない値で計算する道になる）。書き戻し（月次/答えの書き戻し.py）が呼ぶ。"""
+    from 芯.計算 import 形 as 計の形   # 芯/集計/形.py が この file を読む＝循環を避けて呼ぶ時に読む
+    from 芯.集計 import 形 as 集の形
+    try:
+        e = 名を確かめる(名)
+    except 表に無い名:
+        e = None
+    if e is None:
+        return f"{名} は芯が形を決めていない項目"
+    if _空(v):
+        return "値が空"
+    形 = e["形"]
+    if 形 not in 読める形:
+        return f"{名} は芯が形を決めていない（形 {形}）"
+    if 形 in 照らす形:
+        return "" if _照らし[形](e, v) is not None else f"選べる値（{e.get('選べる値', '')}）の外"
+    try:
+        if 形 in ("額", "数", "率"):
+            x = 計の形.数(v, 名)
+            ok = x is not None and x.is_finite() and x >= 0
+        elif 形 == "時間":
+            x = 計の形.時間(v, 名)
+            ok = x is not None and x >= 0
+        elif 形 == "日付":
+            ok = 計の形.日付(v, 名) is not None
+        elif 形 == "時刻":
+            ok = 集の形.分(v) is not None
+        else:   # 時間帯
+            ok = 集の形.時間帯(v) is not None
+    except (ValueError, TypeError, ArithmeticError):
+        ok = False
+    return "" if ok else f"{形}の形（{_形の見本[形]}）で読めない"
+
+
+_形の見本 = {"額": "0 以上の数", "数": "0 以上の数", "率": "0 以上の数の倍（例 1.25）", "時間": "0 以上の時間の数か h:mm",
+          "日付": "YYYY-MM-DD", "時刻": "h:mm", "時間帯": "h:mm〜h:mm"}
 
 
 # ---- 時間.休憩の表 の 3 つの形 ----
