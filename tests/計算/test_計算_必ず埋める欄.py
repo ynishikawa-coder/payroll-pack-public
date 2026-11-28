@@ -41,8 +41,8 @@ def test_必ず埋める欄は表に7つで既定を持たない():
     表 = 設定.表()
     assert set(設定.必ず埋める()) == set(必ず)
     for 名 in 必ず:
-        assert "既定" not in 表[名] and not 表[名].get("埋める"), 名
-        assert 名 not in 設定.既定で埋める(), 名
+        assert "見当" not in 表[名], 名   # 必ず埋める欄は見当でも仮に数えない（額を出さない）
+        assert 設定.空を見当で埋める({}, 表[名]["読む所"][0] if 表[名].get("読む所") else "計算")[1].count(名) == 0, 名
     辞書 = {it["項目"]: it for it in json.loads((根 / "初期設定" / "項目.json").read_text(encoding="utf-8"))["項目"]}
     assert {n for n, it in 辞書.items() if it.get("必ず埋める")} == set(必ず)   # 辞書（正本の意味）と芯の表が同じ 7 つ
     assert all("既定" not in 辞書[n] for n in 必ず)
@@ -109,7 +109,13 @@ def test_値を置いた人は前の既定と同じ額で確認済(tmp_path):
 
 def test_既定で埋める道へ戻すと空の人に額が出る(tmp_path, monkeypatch):
     """誤りを戻す試験: 1 欄を前の既定で黙って埋める道へ戻すと、この試験の見る所（欄が空の人・全部が仮）が赤になることを確かめる。"""
-    monkeypatch.setitem(要る値.既定, "源泉.欄", "甲")
+    元 = 設定.空を見当で埋める
+    def 黙って甲(値たち, 読む所):
+        v, 空 = 元(値たち, 読む所)
+        if not v.get("源泉.欄"):
+            v = {**v, "源泉.欄": "甲"}   # 前の 既定で埋める 道: 仮にも問いにもしない
+        return v, 空
+    monkeypatch.setattr(設定, "空を見当で埋める", 黙って甲)
     r = _空にして回す(tmp_path, "源泉.欄")
     assert r["欄が空の人"] == [] and r["人"][0]["状態"] == "確認済"   # 黙って甲で確定した額が出る＝上の試験が拒む形
     assert {x["項目"]: x["値"] for x in r["行"]}["源泉所得税"] == 4750
