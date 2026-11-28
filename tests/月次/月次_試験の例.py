@@ -50,7 +50,7 @@ def 日の問いの帳(行たち, 顧客ID: str, *, 日付: str = ""):
     import re
     問いたち, 答えたち, 振り分けたち = [], [], []
     for q in 行たち:
-        鍵 = str(q.get("問いの番号", ""))
+        鍵 = str(q.get("問いの鍵", ""))
         選 = [o.strip() for o in re.split(r"[／｜\n]", str(q.get("答え方の例", "") or "")) if o.strip()]
         問いたち.append(例の問い(鍵, 顧客ID, 状態="答えた" if str(q.get("回答", "")).strip() else "聞いている",
                              聞いた支給月=str(q.get("支給月", "")), 選択肢の振り分け={o: [] for o in 選}))

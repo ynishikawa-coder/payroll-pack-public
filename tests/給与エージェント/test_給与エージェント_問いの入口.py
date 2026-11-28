@@ -13,14 +13,24 @@ import pytest
 
 from 手伝い import 根
 
-見出し = ["問いの番号", "会社", "対象", "質問", "回答", "反映先", "答えで変わる項目と人", "理由"]
+sys.path.insert(0, str(根))
+from 初期設定 import 質問と回答 as qa  # noqa: E402
+
+
+def 答え済みの表():
+    """作り物の 質問と回答（3 タブ）。Q209901-1 は答えた問い。"""
+    return {qa.Driveのタブ("問い"): [qa.見出し("問い"), ["Q209901-1", "作り物の会社", "2099-01", "2099-01-05",
+                                                     "通勤の手当の上限はいくらですか", "", "答えた"]],
+            qa.Driveのタブ("答え"): [qa.見出し("答え"), ["Q209901-1", "月 1 万", "2099-01-06", ""]],
+            qa.Driveのタブ("振り分け"): [qa.見出し("振り分け")]}
+
+
 芯 = 根 / "確認ページ" / "前の答え.py"
 
 
 def test_答え済みの問いは本物のパックの口で止める(tmp_path):
     rows = tmp_path / "qa.json"
-    rows.write_text(json.dumps({"values": [見出し, ["Q209901-1", "作り物の会社", "会社", "通勤の手当の上限はいくらですか", "月 1 万", "", "", ""]]},
-                               ensure_ascii=False), encoding="utf-8")
+    rows.write_text(json.dumps(答え済みの表(), ensure_ascii=False), encoding="utf-8")
     qs = tmp_path / "qs.txt"
     qs.write_text("通勤の手当の上限はいくらですか\n", encoding="utf-8")
     r = subprocess.run([sys.executable, str(芯), "--rows", str(rows), "--questions", str(qs)], capture_output=True, text=True)
@@ -54,8 +64,7 @@ def 芯へ表を流す道具(パック, tmp_path):
     環境・標準入力、使い方に出る下の命令ごと）で回し、表を芯へ流した（偽の芯が呼ばれた）道具の名を返す。"""
     plugin = パック / "plugins" / "payroll-agent"
     rows, qs = tmp_path / "qa.json", tmp_path / "qs.txt"
-    rows.write_text(json.dumps({"values": [見出し, ["Q209901-1", "作り物の会社", "会社", "通勤の手当の上限はいくらですか", "月 1 万",
-                                                  "", "", ""]]}, ensure_ascii=False), encoding="utf-8")
+    rows.write_text(json.dumps(答え済みの表(), ensure_ascii=False), encoding="utf-8")
     qs.write_text("通勤の手当の上限はいくらですか\n", encoding="utf-8")
     印 = パック / "確認ページ" / "呼ばれた"
     env = {**os.environ, "PAYROLL_PACK_DIR": str(パック), "PAYROLL_QA_ROWS": str(rows), "PAYROLL_QA_COMPANY": "作り物の会社"}

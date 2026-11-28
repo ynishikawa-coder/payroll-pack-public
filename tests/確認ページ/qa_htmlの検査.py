@@ -2,13 +2,14 @@
 
 値の表（config/skill-values.json）に前の答えの命令（docs-kit.qa-html.prior_check_cmd）が在ると、check.mjs は照らした結果の無いページを
 赤にする（「前の答えを照らした結果が無い」）。--run-prior でその命令（確認ページ/前の答え.py）を走らせてから照らす。
-質問と回答は見出しだけの作り物の表（答え済み 0＝新しい会社）。
+質問と回答は見出しだけの作り物の 3 タブ（答え済み 0＝新しい会社）。
 """
 import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 根 = Path(__file__).resolve().parents[2]
@@ -33,12 +34,15 @@ def 答えを照らす(答え: dict) -> subprocess.CompletedProcess:
     """答え（qa-html/2）を土台の答えの形の正本（check.mjs --answer）で照らす。"""
     return subprocess.run(["node", 道具(), "--answer", "-", "--json"], input=json.dumps(答え, ensure_ascii=False),
                           capture_output=True, text=True)
-質問の見出し = ["問いの番号", "会社", "対象", "質問", "回答", "反映先", "答えで変わる項目と人", "理由"]
+if str(根) not in sys.path:
+    sys.path.insert(0, str(根))
+from 初期設定 import 質問と回答 as _qa  # noqa: E402
+空の質問と回答 = {_qa.Driveのタブ(t): [_qa.見出し(t)] for t in _qa.タブたち}
 
 
 def 当てる(f: Path, *足す: str, tmp: Path) -> subprocess.CompletedProcess:
     t = tmp / "質問と回答.json"
-    t.write_text(json.dumps({"values": [質問の見出し]}, ensure_ascii=False), encoding="utf-8")
+    t.write_text(json.dumps(空の質問と回答, ensure_ascii=False), encoding="utf-8")
     env = {**os.environ, "PAYROLL_QA_ROWS": str(t), "PAYROLL_PACK_DIR": str(tmp / "無いパックの場所")}   # 道具は値の表の repo の根から引く（環境に頼らない）
     return subprocess.run(["node", 道具(), str(f), *足す, "--run-prior",
                            "--values", str(根 / "config" / "skill-values.json")], capture_output=True, text=True, env=env, cwd=tmp)
