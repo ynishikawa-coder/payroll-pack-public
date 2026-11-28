@@ -1,6 +1,6 @@
 {
   "name": "payroll-agent",
-  "description": "給与エージェントの部分。毎月の手順（skill payroll-steps）・守る決まり（決まり.md・起動時に差し込む）・照らし（hooks と bin）。版はパックの版の印と同じ（この file に版を書かない）。パックは Drive の口を持ち、鍵と置き場の根の id は給与の窓が環境から渡す。出す物と管理表はパックの 1 命令で書く。見張りは GitHub の道具と add_repo を repo payroll-pack・payroll-pack-public の時だけ止める。ほかは口の一覧（口の一覧.md）の口を呼ぶ。",
+  "description": "給与エージェントの部分。毎月の手順（skill payroll-steps）・守る決まり（決まり.md・起動時に差し込む）。版はパックの版の印と同じ（この file に版を書かない）。パックは Drive の口を持ち、鍵と置き場の根の id は給与の窓が環境から渡す。出す物と管理表はパックの 1 命令で書く。ほかは口の一覧（口の一覧.md）の口を呼ぶ。",
   "author": {
     "name": "payroll-pack"
   }

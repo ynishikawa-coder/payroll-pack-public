@@ -70,9 +70,17 @@ class 作り物のDrive:
             out.pop()
         return out
 
+    def _在るタブ(self, シートid: str, タブ: str) -> list[list[str]]:
+        """書く先のタブ。本物の Drive は無いタブへの書きを範囲の読めない赤で止める＝作り物も黙って作らず止める
+        （作り物がタブを作ると、タブの名を渡さずにシートを作る呼び方が試験で緑・本番だけ赤になる）。"""
+        表 = self._シート(シートid)
+        if タブ not in 表:
+            raise KeyError(f"タブが無い: {タブ}（在るのは {list(表)}）")
+        return 表[タブ]
+
     def 表へ書く(self, シートid: str, 範囲: str, 値: list[list]) -> None:
         タブ, 行, 列 = self._範囲を割る(範囲)
-        表 = self._シート(シートid).setdefault(タブ, [])
+        表 = self._在るタブ(シートid, タブ)
         for k, r in enumerate(値):
             while len(表) <= 行 + k:
                 表.append([])
@@ -84,7 +92,7 @@ class 作り物のDrive:
 
     def 表へ足す(self, シートid: str, 範囲: str, 値: list[list]) -> None:
         タブ, _, 列 = self._範囲を割る(範囲)
-        表 = self._シート(シートid).setdefault(タブ, [])
+        表 = self._在るタブ(シートid, タブ)
         末 = len(表)
         while 末 and not any(表[末 - 1]):
             末 -= 1
@@ -104,8 +112,18 @@ class 作り物のDrive:
     def ファイルを置く(self, 親id: str, 名: str, 中身: bytes, mime: str) -> str:
         return self._作る(親id, 名, mime, 中身=bytes(中身))
 
-    def シートを作る(self, 親id: str, 名: str) -> str:
-        return self._作る(親id, 名, シートのmime, タブ={"シート1": []})
+    def シートを作る(self, 親id: str, 名: str, タブたち: list[str] | None = None) -> str:
+        return self._作る(親id, 名, シートのmime, タブ={t: [] for t in (タブたち or ["シート1"])})
+
+    def 移す(self, file_id: str, 新しい親id: str) -> None:
+        if file_id not in self.物 or 新しい親id not in self.物:
+            raise KeyError(f"無い: {file_id} か {新しい親id}")
+        self.物[file_id]["親"] = 新しい親id
+
+    def リンク(self, file_id: str) -> str:
+        if file_id not in self.物:
+            raise KeyError(f"無い: {file_id}")
+        return f"https://作り物.invalid/{file_id}"
 
     def フォルダを作る(self, 親id: str, 名: str) -> str:
         return self._作る(親id, 名, フォルダのmime)

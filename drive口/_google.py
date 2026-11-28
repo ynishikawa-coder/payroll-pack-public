@@ -142,8 +142,26 @@ class Googleの口:
         return self._d.files().create(body={"name": 名, "parents": [親id], "mimeType": mime},
                                       fields="id", **_全部のドライブ).execute()["id"]
 
-    def シートを作る(self, 親id: str, 名: str) -> str:
-        return self._作る(親id, 名, シートのmime)
+    def シートを作る(self, 親id: str, 名: str, タブたち: list[str] | None = None) -> str:
+        """シートを作り、タブたちを渡せばその名のタブを並びどおりに持たせる（最初のタブは改名・残りは足す）。"""
+        i = self._作る(親id, 名, シートのmime)
+        if タブたち:
+            r = self._s.spreadsheets().get(spreadsheetId=i, fields="sheets.properties.sheetId").execute()
+            頭 = r["sheets"][0]["properties"]["sheetId"]
+            頼み = [{"updateSheetProperties": {"properties": {"sheetId": 頭, "title": タブたち[0]}, "fields": "title"}}]
+            頼み += [{"addSheet": {"properties": {"title": t}}} for t in タブたち[1:]]
+            self._s.spreadsheets().batchUpdate(spreadsheetId=i, body={"requests": 頼み}).execute()
+        return i
+
+    def 移す(self, file_id: str, 新しい親id: str) -> None:
+        """file を別のフォルダへ移す（今の親を全部外して新しい親だけにする・共有ドライブ込み）。"""
+        親 = self._d.files().get(fileId=file_id, fields="parents", **_全部のドライブ).execute().get("parents", [])
+        self._d.files().update(fileId=file_id, addParents=新しい親id, removeParents=",".join(親),
+                               fields="id, parents", **_全部のドライブ).execute()
+
+    def リンク(self, file_id: str) -> str:
+        """file を開く URL（表へは id でなくこの URL を書く）。"""
+        return self._d.files().get(fileId=file_id, fields="webViewLink", **_全部のドライブ).execute()["webViewLink"]
 
     def フォルダを作る(self, 親id: str, 名: str) -> str:
         return self._作る(親id, 名, フォルダのmime)

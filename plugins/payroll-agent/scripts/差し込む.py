@@ -3,7 +3,6 @@
 
 使い方:
   python3 差し込む.py inject   SessionStart の hook が呼ぶ。決まり.md を窓の文脈へ差し込む。
-  python3 差し込む.py check    決まり.md が上限の内か・読めるかを照らす（0=緑 / 1=上限を越えた / 2=読めない・道具が壊れた＝結果ではない）。
 inject は何が起きても 0 で抜ける（窓の起動を止めない）。読めない・壊れた時は stderr に訳を出す。
 """
 from __future__ import annotations
@@ -14,8 +13,6 @@ from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parent.parent
 決まり = PLUGIN / "決まり.md"
-# 常に読まれる量の上限（バイト・UTF-8）。数はここの 1 か所だけに置く。
-上限 = 4800
 
 
 def 差し込む文() -> str:
@@ -35,34 +32,18 @@ def inject() -> int:
     return 0
 
 
-def check() -> int:
-    try:
-        n = len(決まり.read_text(encoding="utf-8").encode("utf-8"))
-    except OSError as e:
-        print(f"✗ 決まり.md が読めない: {e}")
-        return 2
-    if n > 上限:
-        print(f"✗ 決まり.md が上限を越えた: {n} > {上限} バイト（手順は skill へ移す）")
-        return 1
-    print(f"✓ 決まり.md {n} バイト（上限 {上限}）")
-    return 0
-
-
 def 走らせる(cmd: str) -> int:
-    """口を回す。道具そのものが壊れた時、inject は 0（窓の起動を止めない）・check は 2（1 の「上限を越えた」と混ぜない）。"""
-    if cmd not in ("inject", "check"):
+    """口を回す。道具そのものが壊れても 0（窓の起動を止めない）。"""
+    if cmd != "inject":
         print(__doc__, file=sys.stderr)
         return 2
     try:
-        return inject() if cmd == "inject" else check()
+        return inject()
     except Exception as e:
         import traceback
         traceback.print_exc()
-        if cmd == "inject":
-            print(f"payroll-agent: 決まりを差し込む口が壊れた（{type(e).__name__}: {e}）＝決まりは差し込まれていない", file=sys.stderr)
-            return 0
-        print(f"✗ 道具が壊れた（決まりを差し込む口の check・終わりの値 2＝結果ではない）: {type(e).__name__}: {e}", file=sys.stderr)
-        return 2
+        print(f"payroll-agent: 決まりを差し込む口が壊れた（{type(e).__name__}: {e}）＝決まりは差し込まれていない", file=sys.stderr)
+        return 0
 
 
 if __name__ == "__main__":

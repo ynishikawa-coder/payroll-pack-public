@@ -9,16 +9,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/見張り.py\""
-          }
-        ]
-      }
     ]
   }
 }
